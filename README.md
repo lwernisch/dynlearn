@@ -1,2 +1,2 @@
 # dynlearn
-Active learning of dynamical system
+Active learning of dynamical systems
