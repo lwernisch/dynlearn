@@ -1,0 +1,446 @@
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="X-UA-Compatible" content="IE=Edge" />
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    <title>dynlearn.gp_kernels &#8212; dynlearn 0.1 documentation</title>
+    <link rel="stylesheet" href="../../_static/alabaster.css" type="text/css" />
+    <link rel="stylesheet" href="../../_static/pygments.css" type="text/css" />
+    <script type="text/javascript" src="../../_static/documentation_options.js"></script>
+    <script type="text/javascript" src="../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../_static/doctools.js"></script>
+    <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.1/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+    <link rel="index" title="Index" href="../../genindex.html" />
+    <link rel="search" title="Search" href="../../search.html" />
+   
+  <link rel="stylesheet" href="../../_static/custom.css" type="text/css" />
+  
+  
+  <meta name="viewport" content="width=device-width, initial-scale=0.9, maximum-scale=0.9" />
+
+  </head><body>
+  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+  <h1>Source code for dynlearn.gp_kernels</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;Basic Gaussian process functionality for squared exponential kernel</span>
+
+<span class="sd">The :class:`Kernel` class implements a basic GP methods for numpy inputs, and</span>
+<span class="sd">parallel versions for `Tensorflow &lt;https://www.tensorflow.org/&gt;`_. This is</span>
+<span class="sd">a very basic GP version not providing any optimisation of hyperparameters.</span>
+
+<span class="sd">Example:</span>
+<span class="sd">    Optimise a latent test variable to fit target distribution::</span>
+
+<span class="sd">        # 2d input, 5 sample points</span>
+<span class="sd">        x = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0],</span>
+<span class="sd">                      [7.0, 8.0], [9.0, 10.0]])</span>
+<span class="sd">        # corresponding 2-multi output:</span>
+<span class="sd">        y = np.array([[1.1, 2.2], [3.3, 4.4], [5.5, 6.6],</span>
+<span class="sd">                      [7.7, 8.8], [9.9, 10.1]])</span>
+
+<span class="sd">        k = Kernel(lengthscales=1.1 * np.ones(x.shape[1]),</span>
+<span class="sd">                   variance=1.2 ** 2,</span>
+<span class="sd">                   likelihood_variance=0.001 ** 2,</span>
+<span class="sd">                   x=x)</span>
+<span class="sd">        k.set_y(y)</span>
+
+<span class="sd">        # set up latent test input for prediction:</span>
+<span class="sd">        z = tf.Variable([[0.5, 2.5], [3.5, 4.5]], dtype=&quot;float64&quot;)</span>
+<span class="sd">        sess.run(tf.global_variables_initializer())</span>
+
+<span class="sd">        m_target = np.array([[1.1, 2.2], [3.3, 4.4]], dtype=&quot;float64&quot;)</span>
+<span class="sd">        m_tf, v_tf = k.tf_predict(z)</span>
+<span class="sd">        sess.run(m_tf) # mean prediction over z far from m_target</span>
+
+<span class="sd">        # loss(z) is log prob(m_target | z, k):</span>
+<span class="sd">        mvn = tf.contrib.distributions.MultivariateNormalFullCovariance(m_tf, v_tf)</span>
+<span class="sd">        loss = -tf.reduce_sum(mvn.log_prob(m_target))</span>
+
+<span class="sd">        # optimise latent z</span>
+<span class="sd">        optimizer = tf.contrib.opt.ScipyOptimizerInterface(loss)</span>
+<span class="sd">        optimizer.minimize(sess)</span>
+
+<span class="sd">        # latent test input should be close to true x input:</span>
+<span class="sd">        z_eval = sess.run(z)</span>
+<span class="sd">        assert np.sum(np.abs(z_eval - k.x[0:2, :])) &lt;  0.01</span>
+
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="kn">import</span> <span class="nn">tensorflow</span> <span class="k">as</span> <span class="nn">tf</span>
+<span class="kn">import</span> <span class="nn">numpy</span> <span class="k">as</span> <span class="nn">np</span>
+
+
+<div class="viewcode-block" id="Kernel"><a class="viewcode-back" href="../../index.html#dynlearn.gp_kernels.Kernel">[docs]</a><span class="k">class</span> <span class="nc">Kernel</span><span class="p">:</span>
+    <span class="sd">&quot;&quot;&quot;GP methods for squared exponential kernel. After definition using</span>
+<span class="sd">    lengthscales</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        lengthscales: lengthscales of input</span>
+<span class="sd">        variance: amount of variation</span>
+<span class="sd">        likelihood_variance: error variance</span>
+<span class="sd">        x: input</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">lengthscales</span><span class="p">,</span> <span class="n">variance</span><span class="p">,</span> <span class="n">likelihood_variance</span><span class="p">,</span> <span class="n">x</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">lengthscales</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">(</span><span class="n">lengthscales</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">variance</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">(</span><span class="n">variance</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">likelihood_variance</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">(</span><span class="n">likelihood_variance</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">x</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">set_x</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">compute_x_stuff</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">Kxx</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">np_Kxx</span><span class="p">(</span><span class="n">is_epsilon</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">Kinv</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">inv</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">Kxx</span><span class="p">))</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">input_dim</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">x</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+
+<div class="viewcode-block" id="Kernel.set_x"><a class="viewcode-back" href="../../index.html#dynlearn.gp_kernels.Kernel.set_x">[docs]</a>    <span class="k">def</span> <span class="nf">set_x</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">x</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Set the input values for GP</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            x ((n,d) np.array): n inputs of dim d</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">x</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">(</span><span class="n">x</span><span class="o">.</span><span class="n">copy</span><span class="p">())</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">compute_x_stuff</span><span class="p">()</span>
+</div>
+<div class="viewcode-block" id="Kernel.add_x"><a class="viewcode-back" href="../../index.html#dynlearn.gp_kernels.Kernel.add_x">[docs]</a>    <span class="k">def</span> <span class="nf">add_x</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">x</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Add new samples to the current input values&quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">x</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">([</span><span class="bp">self</span><span class="o">.</span><span class="n">x</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">(</span><span class="n">x</span><span class="o">.</span><span class="n">copy</span><span class="p">())])</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">compute_x_stuff</span><span class="p">()</span>
+</div>
+    <span class="k">def</span> <span class="nf">compute_y_stuff</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">Kinv_y</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">solve</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">Kxx</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">y</span><span class="p">))</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">output_dim</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">y</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+
+<div class="viewcode-block" id="Kernel.set_y"><a class="viewcode-back" href="../../index.html#dynlearn.gp_kernels.Kernel.set_y">[docs]</a>    <span class="k">def</span> <span class="nf">set_y</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">y</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Set the output (target) values</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            y ((n,k) np.array): k independent multioutputs for n inputs</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">y</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">(</span><span class="n">y</span><span class="o">.</span><span class="n">copy</span><span class="p">())</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">compute_y_stuff</span><span class="p">()</span>
+</div>
+<div class="viewcode-block" id="Kernel.add_y"><a class="viewcode-back" href="../../index.html#dynlearn.gp_kernels.Kernel.add_y">[docs]</a>    <span class="k">def</span> <span class="nf">add_y</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">y</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Add new samples to the current output values&quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">y</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">([</span><span class="bp">self</span><span class="o">.</span><span class="n">y</span><span class="p">,</span> <span class="n">y</span><span class="o">.</span><span class="n">copy</span><span class="p">()])</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">compute_y_stuff</span><span class="p">()</span>
+</div>
+    <span class="k">def</span> <span class="nf">np_Kvw</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">v</span><span class="p">,</span> <span class="n">w</span><span class="p">,</span> <span class="n">is_epsilon</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+        <span class="n">v1</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">expand_dims</span><span class="p">(</span><span class="n">v</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>  <span class="c1"># (m,1,input_dim), along rows</span>
+        <span class="n">w1</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">expand_dims</span><span class="p">(</span><span class="n">w</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>  <span class="c1"># (1,n,input_dim), along cols</span>
+        <span class="n">s1</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">expand_dims</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">expand_dims</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">lengthscales</span><span class="p">,</span> <span class="mi">0</span><span class="p">),</span>
+                            <span class="mi">0</span><span class="p">)</span>  <span class="c1"># (1,1,input_dim)</span>
+        <span class="n">sq_sum</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">square</span><span class="p">(</span><span class="n">v1</span> <span class="o">-</span> <span class="n">w1</span><span class="p">)</span> <span class="o">/</span> <span class="n">s1</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">2</span><span class="p">)</span>  <span class="c1"># sum along input_dim</span>
+        <span class="n">Kvw</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">variance</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="o">-</span><span class="n">sq_sum</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">is_epsilon</span><span class="p">:</span>  <span class="c1"># and Kvw.shape[0] == Kvw.shape[1]:</span>
+            <span class="n">Kvw</span> <span class="o">=</span> <span class="n">Kvw</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">likelihood_variance</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">eye</span><span class="p">(</span><span class="n">Kvw</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+        <span class="k">return</span> <span class="n">Kvw</span>
+
+    <span class="k">def</span> <span class="nf">np_Kxx</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">is_epsilon</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">np_Kvw</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">x</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">x</span><span class="p">,</span> <span class="n">is_epsilon</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">np_Kzx</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">z</span><span class="p">,</span> <span class="n">is_epsilon</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">np_Kvw</span><span class="p">(</span><span class="n">z</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">x</span><span class="p">,</span> <span class="n">is_epsilon</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">np_Kzz</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">z</span><span class="p">,</span> <span class="n">is_epsilon</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">np_Kvw</span><span class="p">(</span><span class="n">z</span><span class="p">,</span> <span class="n">z</span><span class="p">,</span> <span class="n">is_epsilon</span><span class="p">)</span>
+
+<div class="viewcode-block" id="Kernel.np_predict"><a class="viewcode-back" href="../../index.html#dynlearn.gp_kernels.Kernel.np_predict">[docs]</a>    <span class="k">def</span> <span class="nf">np_predict</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">z</span><span class="p">,</span> <span class="n">is_epsilon</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">is_cov</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Predict output for new inputs</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            z ((m,d) np.array): *m* input points of dim *d* (same as **x**)</span>
+<span class="sd">            is_epsilon (boolean): add measurement error</span>
+<span class="sd">            is_cov (boolean): return covariance matrix</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            tuple containing</span>
+
+<span class="sd">                - **mean** (*(m,k) np.array*): *m* mean predictions over **z** for</span>
+<span class="sd">                    *k* outputs</span>
+<span class="sd">                - **var** (*(m,m) np.array*): covariance of **z** inputs</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">Kzx</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">np_Kzx</span><span class="p">(</span><span class="n">z</span><span class="p">,</span> <span class="kc">False</span><span class="p">)</span>
+        <span class="n">mean</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">matmul</span><span class="p">(</span><span class="n">Kzx</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">Kinv_y</span><span class="p">)</span>
+        <span class="n">var</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="k">if</span> <span class="n">is_cov</span><span class="p">:</span>
+            <span class="n">Kzz</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">np_Kzz</span><span class="p">(</span><span class="n">z</span><span class="p">,</span> <span class="n">is_epsilon</span><span class="p">)</span>
+            <span class="n">var</span> <span class="o">=</span> <span class="n">Kzz</span> <span class="o">-</span> <span class="n">np</span><span class="o">.</span><span class="n">matmul</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">matmul</span><span class="p">(</span><span class="n">Kzx</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">Kinv</span><span class="p">),</span> <span class="n">np</span><span class="o">.</span><span class="n">transpose</span><span class="p">(</span><span class="n">Kzx</span><span class="p">))</span>
+        <span class="k">return</span> <span class="p">(</span><span class="n">mean</span><span class="p">,</span> <span class="n">var</span><span class="p">)</span>
+</div>
+    <span class="k">def</span> <span class="nf">tf_Kvw</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">v</span><span class="p">,</span> <span class="n">w</span><span class="p">,</span> <span class="n">is_epsilon</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+        <span class="n">v1</span> <span class="o">=</span> <span class="n">tf</span><span class="o">.</span><span class="n">expand_dims</span><span class="p">(</span><span class="n">v</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>  <span class="c1"># (n,1,input_dim), along rows</span>
+        <span class="n">w1</span> <span class="o">=</span> <span class="n">tf</span><span class="o">.</span><span class="n">expand_dims</span><span class="p">(</span><span class="n">w</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>  <span class="c1"># (1,n,input_dim), along cols</span>
+        <span class="n">s1</span> <span class="o">=</span> <span class="n">tf</span><span class="o">.</span><span class="n">expand_dims</span><span class="p">(</span><span class="n">tf</span><span class="o">.</span><span class="n">expand_dims</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">lengthscales</span><span class="p">,</span> <span class="mi">0</span><span class="p">),</span>
+                            <span class="mi">0</span><span class="p">)</span>  <span class="c1"># (1,1,input_dim)</span>
+        <span class="n">sq_sum</span> <span class="o">=</span> <span class="n">tf</span><span class="o">.</span><span class="n">reduce_sum</span><span class="p">(</span><span class="n">tf</span><span class="o">.</span><span class="n">square</span><span class="p">(</span><span class="n">v1</span> <span class="o">-</span> <span class="n">w1</span><span class="p">)</span> <span class="o">/</span> <span class="n">s1</span><span class="p">,</span>
+                               <span class="n">axis</span><span class="o">=</span><span class="mi">2</span><span class="p">)</span>  <span class="c1"># sum along input_dim</span>
+        <span class="n">Kvw</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">variance</span> <span class="o">*</span> <span class="n">tf</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="o">-</span><span class="n">sq_sum</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">is_epsilon</span><span class="p">:</span>  <span class="c1"># and tf.shape(Kvw)[0] == tf.shape(Kvw)[1]:</span>
+            <span class="n">Kvw</span> <span class="o">=</span> <span class="n">Kvw</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">likelihood_variance</span> <span class="o">*</span> <span class="n">tf</span><span class="o">.</span><span class="n">eye</span><span class="p">(</span><span class="n">tf</span><span class="o">.</span><span class="n">shape</span><span class="p">(</span><span class="n">Kvw</span><span class="p">)[</span><span class="mi">0</span><span class="p">],</span>
+                                                          <span class="n">dtype</span><span class="o">=</span><span class="s2">&quot;float64&quot;</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">Kvw</span>
+
+    <span class="k">def</span> <span class="nf">tf_Kzx</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">z</span><span class="p">,</span> <span class="n">is_epsilon</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">tf_Kvw</span><span class="p">(</span><span class="n">z</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">x</span><span class="p">,</span> <span class="n">is_epsilon</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">tf_Kzz</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">z</span><span class="p">,</span> <span class="n">is_epsilon</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">tf_Kvw</span><span class="p">(</span><span class="n">z</span><span class="p">,</span> <span class="n">z</span><span class="p">,</span> <span class="n">is_epsilon</span><span class="p">)</span>
+
+<div class="viewcode-block" id="Kernel.tf_predict"><a class="viewcode-back" href="../../index.html#dynlearn.gp_kernels.Kernel.tf_predict">[docs]</a>    <span class="k">def</span> <span class="nf">tf_predict</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">z</span><span class="p">,</span> <span class="n">is_epsilon</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">is_cov</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Predict output for new inputs, TensorFlow version</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            z ((m,d) tf.Variable): *m* input points of dim *d* (same as **x**)</span>
+<span class="sd">            is_epsilon (boolean): add measurement error</span>
+<span class="sd">            is_cov (boolean): return covariance matrix</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            tuple containing</span>
+
+<span class="sd">                - **mean** (*(m,k) tf.Tensor*): *m* mean predictions over **z** for</span>
+<span class="sd">                    *k* outputs</span>
+<span class="sd">                - **var** (*(m,m) tf.Tensor*): covariance of **z** inputs</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">Kzx</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">tf_Kzx</span><span class="p">(</span><span class="n">z</span><span class="p">,</span> <span class="kc">False</span><span class="p">)</span>  <span class="c1"># n_sample(z) x n_sample(x)</span>
+        <span class="c1"># Kinv_y is n_sample(x) x n_tracks(y), ie indep tracks</span>
+        <span class="n">mean</span> <span class="o">=</span> <span class="n">tf</span><span class="o">.</span><span class="n">matmul</span><span class="p">(</span><span class="n">Kzx</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">Kinv_y</span><span class="p">)</span>
+        <span class="n">var</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="k">if</span> <span class="n">is_cov</span><span class="p">:</span>
+            <span class="n">Kzz</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">tf_Kzz</span><span class="p">(</span><span class="n">z</span><span class="p">,</span> <span class="n">is_epsilon</span><span class="p">)</span>
+            <span class="n">var</span> <span class="o">=</span> <span class="n">Kzz</span> <span class="o">-</span> <span class="n">tf</span><span class="o">.</span><span class="n">matmul</span><span class="p">(</span><span class="n">tf</span><span class="o">.</span><span class="n">matmul</span><span class="p">(</span><span class="n">Kzx</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">Kinv</span><span class="p">),</span> <span class="n">tf</span><span class="o">.</span><span class="n">transpose</span><span class="p">(</span><span class="n">Kzx</span><span class="p">))</span>
+        <span class="c1"># mean is n_sample(z) x n_tracks(y), var is n_sample(z) x n_sample(z)</span>
+        <span class="k">return</span> <span class="p">(</span><span class="n">mean</span><span class="p">,</span> <span class="n">var</span><span class="p">)</span>
+</div>
+    <span class="k">def</span> <span class="nf">tf_predict_random</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">z</span><span class="p">,</span> <span class="n">is_epsilon</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">cholesky_epsilon</span><span class="o">=</span><span class="mf">1e-3</span><span class="p">,</span>
+                          <span class="n">n_z</span><span class="o">=</span><span class="mi">1</span><span class="p">):</span>
+        <span class="n">random_vecs</span> <span class="o">=</span> <span class="n">tf</span><span class="o">.</span><span class="n">constant</span><span class="p">(</span>
+            <span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">normal</span><span class="p">(</span><span class="n">size</span><span class="o">=</span><span class="p">(</span><span class="n">n_z</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">output_dim</span><span class="p">))),</span>
+            <span class="n">dtype</span><span class="o">=</span><span class="s2">&quot;float64&quot;</span><span class="p">)</span>
+        <span class="n">mean</span><span class="p">,</span> <span class="n">var</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">tf_predict</span><span class="p">(</span><span class="n">z</span><span class="p">,</span> <span class="n">is_epsilon</span><span class="p">,</span> <span class="n">is_cov</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+        <span class="c1"># if not is_epsilon:</span>
+        <span class="c1"># stabilise for Cholesky with cholesky_epsilon*I</span>
+        <span class="n">var</span> <span class="o">=</span> <span class="n">var</span> <span class="o">+</span> <span class="n">cholesky_epsilon</span> <span class="o">*</span> <span class="n">tf</span><span class="o">.</span><span class="n">eye</span><span class="p">(</span><span class="n">tf</span><span class="o">.</span><span class="n">shape</span><span class="p">(</span><span class="n">var</span><span class="p">)[</span><span class="mi">0</span><span class="p">],</span>
+                                              <span class="n">dtype</span><span class="o">=</span><span class="s2">&quot;float64&quot;</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">mean</span> <span class="o">+</span> <span class="n">tf</span><span class="o">.</span><span class="n">matmul</span><span class="p">(</span><span class="n">tf</span><span class="o">.</span><span class="n">cholesky</span><span class="p">(</span><span class="n">var</span><span class="p">),</span> <span class="n">random_vecs</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">tf_predict_random_single</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">z</span><span class="p">,</span> <span class="n">is_epsilon</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+        <span class="n">random_vecs</span> <span class="o">=</span> <span class="n">tf</span><span class="o">.</span><span class="n">constant</span><span class="p">(</span>
+            <span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">normal</span><span class="p">(</span><span class="n">size</span><span class="o">=</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">output_dim</span><span class="p">))),</span>
+            <span class="n">dtype</span><span class="o">=</span><span class="s2">&quot;float64&quot;</span><span class="p">)</span>
+        <span class="n">mean</span><span class="p">,</span> <span class="n">var</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">tf_predict</span><span class="p">(</span><span class="n">z</span><span class="p">,</span> <span class="n">is_epsilon</span><span class="p">,</span> <span class="n">is_cov</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">mean</span> <span class="o">+</span> <span class="n">tf</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">var</span><span class="p">)</span> <span class="o">*</span> <span class="n">random_vecs</span>
+
+    <span class="k">def</span> <span class="nf">tf_predict_value</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">z</span><span class="p">,</span> <span class="n">is_epsilon</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">is_random</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">is_random</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">tf_predict_random</span><span class="p">(</span><span class="n">z</span><span class="p">,</span> <span class="n">is_epsilon</span><span class="o">=</span><span class="n">is_epsilon</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">tf_predict</span><span class="p">(</span><span class="n">z</span><span class="p">,</span> <span class="n">is_epsilon</span><span class="o">=</span><span class="n">is_epsilon</span><span class="p">,</span> <span class="n">is_cov</span><span class="o">=</span><span class="kc">False</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+
+<div class="viewcode-block" id="Kernel.tf_recursive"><a class="viewcode-back" href="../../index.html#dynlearn.gp_kernels.Kernel.tf_recursive">[docs]</a>    <span class="k">def</span> <span class="nf">tf_recursive</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">u_col_tf</span><span class="p">,</span> <span class="n">x0</span><span class="p">,</span> <span class="n">is_epsilon</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+                     <span class="n">is_random</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+                     <span class="n">is_nonnegative</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">is_diff</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Iteratively solve the dynamical system defined by the GP providing</span>
+<span class="sd">        a (random) transition function as defined by the current GP inputs</span>
+<span class="sd">        and outputs and ``u_col_tf`` as external forcing. Start with ``x0``</span>
+<span class="sd">        combined with ``u_col_tf[0,:]`` and along the iteration consider</span>
+<span class="sd">        input from ``u_col_tf[1:,:]``. Returned are the values of the species</span>
+<span class="sd">        variables at each simulation step together with the forcing input.</span>
+
+<span class="sd">        TODO: in order to mimick the effect of drawing a single function from</span>
+<span class="sd">        the GP for the whole recursion one would have to constantly add</span>
+<span class="sd">        previous sampled outputs as new inputs to the GP. This is not done at</span>
+<span class="sd">        the moment for efficiency sake, so effectively each iteration draws a</span>
+<span class="sd">        new transition function from the GP. Future versions should include</span>
+<span class="sd">        this option.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            u_col_tf ((t,d) tf.Tensor): *d*-dim external forcing for *t* steps</span>
+<span class="sd">            x0 ((k,1) np.array): *k* initial values of species</span>
+<span class="sd">            is_epsilon: assume measurement error</span>
+<span class="sd">            is_random: use GP covariance uncertainty</span>
+<span class="sd">            is_nonnegative: impose nonnegativity constraint on species</span>
+<span class="sd">            is_diff: assume the species difference is modeled by GP</span>
+
+<span class="sd">        Returns:</span>
+
+<span class="sd">            *(t,d+k) tf.Tensor* of forcing input and simulated species,</span>
+<span class="sd">            first *d* columns return the *u* forcing input</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">x_dim</span> <span class="o">=</span> <span class="n">x0</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="n">n_steps</span><span class="p">,</span> <span class="n">u_dim</span> <span class="o">=</span> <span class="n">u_col_tf</span><span class="o">.</span><span class="n">shape</span>
+        <span class="n">x_r0</span> <span class="o">=</span> <span class="n">tf</span><span class="o">.</span><span class="n">constant</span><span class="p">(</span><span class="n">x0</span><span class="p">,</span> <span class="n">shape</span><span class="o">=</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="n">x_dim</span><span class="p">),</span> <span class="n">dtype</span><span class="o">=</span><span class="s2">&quot;float64&quot;</span><span class="p">)</span>  <span class="c1"># as row vec</span>
+        <span class="c1"># extend u at time_ind 0 to row vec by x0:</span>
+        <span class="n">rtracks</span> <span class="o">=</span> <span class="n">tf</span><span class="o">.</span><span class="n">concat</span><span class="p">([</span><span class="n">tf</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="n">u_col_tf</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="p">:],</span> <span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">)),</span> <span class="n">x_r0</span><span class="p">],</span> <span class="mi">1</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="n">n_steps</span><span class="p">):</span>
+            <span class="n">rtracks_prev</span> <span class="o">=</span> <span class="n">tf</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="n">rtracks</span><span class="p">[</span><span class="n">t</span> <span class="o">-</span> <span class="mi">1</span><span class="p">,</span> <span class="p">:],</span>
+                                      <span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">))</span>  <span class="c1"># vector to row array</span>
+            <span class="c1"># for prediction need z is (n = 1) x dim array</span>
+            <span class="n">x_pred</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">tf_predict_value</span><span class="p">(</span><span class="n">rtracks_prev</span><span class="p">,</span> <span class="n">is_epsilon</span><span class="o">=</span><span class="n">is_epsilon</span><span class="p">,</span>
+                                           <span class="n">is_random</span><span class="o">=</span><span class="n">is_random</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">is_diff</span><span class="p">:</span>
+                <span class="n">x_pred</span> <span class="o">=</span> <span class="n">x_pred</span> <span class="o">+</span> <span class="n">rtracks_prev</span><span class="p">[:,</span><span class="n">u_dim</span><span class="p">:]</span> <span class="c1"># remove U, only X</span>
+            <span class="k">if</span> <span class="n">is_nonnegative</span><span class="p">:</span>
+                <span class="n">x_pred</span> <span class="o">=</span> <span class="n">tf</span><span class="o">.</span><span class="n">maximum</span><span class="p">(</span><span class="n">x_pred</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>
+
+            <span class="n">rtracks_current</span> <span class="o">=</span> <span class="n">tf</span><span class="o">.</span><span class="n">concat</span><span class="p">(</span>
+                <span class="p">[</span><span class="n">tf</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="n">u_col_tf</span><span class="p">[</span><span class="n">t</span><span class="p">,</span> <span class="p">:],</span> <span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">)),</span> <span class="n">x_pred</span><span class="p">],</span> <span class="mi">1</span><span class="p">)</span>
+            <span class="n">rtracks</span> <span class="o">=</span> <span class="n">tf</span><span class="o">.</span><span class="n">concat</span><span class="p">([</span><span class="n">rtracks</span><span class="p">,</span> <span class="n">rtracks_current</span><span class="p">],</span> <span class="mi">0</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">rtracks</span>
+</div></div>
+
+<span class="k">def</span> <span class="nf">test_kernel</span><span class="p">():</span>
+    <span class="c1"># 2D input</span>
+    <span class="n">x</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([[</span><span class="mf">1.0</span><span class="p">,</span> <span class="mf">2.0</span><span class="p">],</span> <span class="p">[</span><span class="mf">3.0</span><span class="p">,</span> <span class="mf">4.0</span><span class="p">],</span> <span class="p">[</span><span class="mf">5.0</span><span class="p">,</span> <span class="mf">6.0</span><span class="p">],</span> <span class="p">[</span><span class="mf">7.0</span><span class="p">,</span> <span class="mf">8.0</span><span class="p">],</span> <span class="p">[</span><span class="mf">9.0</span><span class="p">,</span> <span class="mf">10.0</span><span class="p">]])</span>
+    <span class="c1"># 2-multi output:</span>
+    <span class="n">y</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([[</span><span class="mf">1.1</span><span class="p">,</span> <span class="mf">2.2</span><span class="p">],</span> <span class="p">[</span><span class="mf">3.3</span><span class="p">,</span> <span class="mf">4.4</span><span class="p">],</span> <span class="p">[</span><span class="mf">5.5</span><span class="p">,</span> <span class="mf">6.6</span><span class="p">],</span> <span class="p">[</span><span class="mf">7.7</span><span class="p">,</span> <span class="mf">8.8</span><span class="p">],</span> <span class="p">[</span><span class="mf">9.9</span><span class="p">,</span> <span class="mf">10.1</span><span class="p">]])</span>
+
+    <span class="n">k</span> <span class="o">=</span> <span class="n">Kernel</span><span class="p">(</span><span class="n">lengthscales</span><span class="o">=</span><span class="mf">1.1</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="n">x</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]),</span>
+               <span class="n">variance</span><span class="o">=</span><span class="mf">1.2</span> <span class="o">**</span> <span class="mi">2</span><span class="p">,</span>
+               <span class="n">likelihood_variance</span><span class="o">=</span><span class="mf">0.001</span> <span class="o">**</span> <span class="mi">2</span><span class="p">,</span>
+               <span class="n">x</span><span class="o">=</span><span class="n">x</span><span class="p">)</span>
+    <span class="n">k</span><span class="o">.</span><span class="n">set_y</span><span class="p">(</span><span class="n">y</span><span class="p">)</span>
+
+    <span class="n">z</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="mi">5</span><span class="p">,</span> <span class="mi">6</span><span class="p">],</span> <span class="n">dtype</span><span class="o">=</span><span class="s2">&quot;float64&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span><span class="n">x</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span>
+
+    <span class="c1"># 2D multi output prediction mean, only one covariance:</span>
+    <span class="n">m</span><span class="p">,</span> <span class="n">v</span> <span class="o">=</span> <span class="n">k</span><span class="o">.</span><span class="n">np_predict</span><span class="p">(</span><span class="n">z</span><span class="p">)</span>
+    <span class="k">assert</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">m</span> <span class="o">-</span> <span class="n">y</span><span class="p">[</span><span class="mi">0</span><span class="p">:</span><span class="mi">3</span><span class="p">,:]))</span> <span class="o">&lt;</span> <span class="mf">1e-2</span>
+
+<span class="k">def</span> <span class="nf">test_kernel_tf</span><span class="p">():</span>
+    <span class="n">sess</span> <span class="o">=</span> <span class="n">tf</span><span class="o">.</span><span class="n">Session</span><span class="p">()</span>
+
+    <span class="c1"># --- set up kernel with fixed x and y</span>
+
+    <span class="c1"># 2D input</span>
+    <span class="n">x</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([[</span><span class="mf">1.0</span><span class="p">,</span> <span class="mf">2.0</span><span class="p">],</span> <span class="p">[</span><span class="mf">3.0</span><span class="p">,</span> <span class="mf">4.0</span><span class="p">],</span> <span class="p">[</span><span class="mf">5.0</span><span class="p">,</span> <span class="mf">6.0</span><span class="p">],</span> <span class="p">[</span><span class="mf">7.0</span><span class="p">,</span> <span class="mf">8.0</span><span class="p">],</span> <span class="p">[</span><span class="mf">9.0</span><span class="p">,</span> <span class="mf">10.0</span><span class="p">]])</span>
+    <span class="c1"># 2-multi output:</span>
+    <span class="n">y</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([[</span><span class="mf">1.1</span><span class="p">,</span> <span class="mf">2.2</span><span class="p">],</span> <span class="p">[</span><span class="mf">3.3</span><span class="p">,</span> <span class="mf">4.4</span><span class="p">],</span> <span class="p">[</span><span class="mf">5.5</span><span class="p">,</span> <span class="mf">6.6</span><span class="p">],</span> <span class="p">[</span><span class="mf">7.7</span><span class="p">,</span> <span class="mf">8.8</span><span class="p">],</span> <span class="p">[</span><span class="mf">9.9</span><span class="p">,</span> <span class="mf">10.1</span><span class="p">]])</span>
+
+    <span class="n">k</span> <span class="o">=</span> <span class="n">Kernel</span><span class="p">(</span><span class="n">lengthscales</span><span class="o">=</span><span class="mf">1.1</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="n">x</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]),</span>
+               <span class="n">variance</span><span class="o">=</span><span class="mf">1.2</span> <span class="o">**</span> <span class="mi">2</span><span class="p">,</span>
+               <span class="n">likelihood_variance</span><span class="o">=</span><span class="mf">0.001</span> <span class="o">**</span> <span class="mi">2</span><span class="p">,</span>
+               <span class="n">x</span><span class="o">=</span><span class="n">x</span><span class="p">)</span>
+    <span class="n">k</span><span class="o">.</span><span class="n">set_y</span><span class="p">(</span><span class="n">y</span><span class="p">)</span>
+
+    <span class="c1"># ---- set up test variable</span>
+
+    <span class="n">z</span> <span class="o">=</span> <span class="n">tf</span><span class="o">.</span><span class="n">Variable</span><span class="p">([[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">],</span> <span class="p">[</span><span class="mi">3</span><span class="p">,</span> <span class="mi">4</span><span class="p">]],</span> <span class="n">dtype</span><span class="o">=</span><span class="s2">&quot;float64&quot;</span><span class="p">)</span>
+    <span class="n">z</span>
+    <span class="n">sess</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">tf</span><span class="o">.</span><span class="n">global_variables_initializer</span><span class="p">())</span>
+
+    <span class="n">m_tf</span><span class="p">,</span> <span class="n">v_tf</span> <span class="o">=</span> <span class="n">k</span><span class="o">.</span><span class="n">tf_predict</span><span class="p">(</span><span class="n">z</span><span class="p">)</span>
+    <span class="n">m</span><span class="p">,</span> <span class="n">v</span> <span class="o">=</span> <span class="n">sess</span><span class="o">.</span><span class="n">run</span><span class="p">([</span><span class="n">m_tf</span><span class="p">,</span> <span class="n">v_tf</span><span class="p">])</span>
+    <span class="k">assert</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">m</span> <span class="o">-</span> <span class="n">y</span><span class="p">[</span><span class="mi">0</span><span class="p">:</span><span class="mi">2</span><span class="p">,</span> <span class="p">:]))</span> <span class="o">&lt;</span> <span class="mf">0.01</span>
+
+    <span class="c1"># --- optimise latent test variable with Scipy to fit target distribution</span>
+    <span class="c1"># ie GPLVM with fixed hyperparameters</span>
+
+    <span class="n">z</span> <span class="o">=</span> <span class="n">tf</span><span class="o">.</span><span class="n">Variable</span><span class="p">([[</span><span class="mf">0.5</span><span class="p">,</span> <span class="mf">2.5</span><span class="p">],</span> <span class="p">[</span><span class="mf">3.5</span><span class="p">,</span> <span class="mf">4.5</span><span class="p">]],</span> <span class="n">dtype</span><span class="o">=</span><span class="s2">&quot;float64&quot;</span><span class="p">)</span>
+    <span class="n">sess</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">tf</span><span class="o">.</span><span class="n">global_variables_initializer</span><span class="p">())</span>
+
+    <span class="n">m_target</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([[</span><span class="mf">1.1</span><span class="p">,</span> <span class="mf">2.2</span><span class="p">],</span> <span class="p">[</span><span class="mf">3.3</span><span class="p">,</span> <span class="mf">4.4</span><span class="p">]],</span> <span class="n">dtype</span><span class="o">=</span><span class="s2">&quot;float64&quot;</span><span class="p">)</span>
+    <span class="n">m_tf</span><span class="p">,</span> <span class="n">v_tf</span> <span class="o">=</span> <span class="n">k</span><span class="o">.</span><span class="n">tf_predict</span><span class="p">(</span><span class="n">z</span><span class="p">)</span>
+    <span class="n">sess</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">m_tf</span><span class="p">)</span> <span class="c1"># mean prediction over z far from m_target</span>
+    <span class="n">sd</span> <span class="o">=</span> <span class="n">tf</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">tf</span><span class="o">.</span><span class="n">diag_part</span><span class="p">(</span><span class="n">v</span><span class="p">))</span>
+    <span class="n">mvn</span> <span class="o">=</span> <span class="n">tf</span><span class="o">.</span><span class="n">contrib</span><span class="o">.</span><span class="n">distributions</span><span class="o">.</span><span class="n">MultivariateNormalFullCovariance</span><span class="p">(</span><span class="n">m_tf</span><span class="p">,</span> <span class="n">v_tf</span><span class="p">)</span>
+    <span class="c1"># loss(z) is log prob(m_target | z, k):</span>
+    <span class="n">loss</span> <span class="o">=</span> <span class="o">-</span><span class="n">tf</span><span class="o">.</span><span class="n">reduce_sum</span><span class="p">(</span><span class="n">mvn</span><span class="o">.</span><span class="n">log_prob</span><span class="p">(</span><span class="n">m_target</span><span class="p">))</span>
+
+    <span class="c1"># optimise latent z</span>
+    <span class="n">optimizer</span> <span class="o">=</span> <span class="n">tf</span><span class="o">.</span><span class="n">contrib</span><span class="o">.</span><span class="n">opt</span><span class="o">.</span><span class="n">ScipyOptimizerInterface</span><span class="p">(</span><span class="n">loss</span><span class="p">)</span>
+    <span class="n">sess</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">loss</span><span class="p">)</span>
+    <span class="n">optimizer</span><span class="o">.</span><span class="n">minimize</span><span class="p">(</span><span class="n">sess</span><span class="p">)</span>
+    <span class="n">sess</span><span class="o">.</span><span class="n">run</span><span class="p">([</span><span class="n">loss</span><span class="p">,</span> <span class="n">z</span><span class="p">,</span> <span class="n">m_tf</span><span class="p">])</span>
+
+    <span class="n">z_eval</span> <span class="o">=</span> <span class="n">sess</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">z</span><span class="p">)</span>
+    <span class="k">assert</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">z_eval</span> <span class="o">-</span> <span class="n">k</span><span class="o">.</span><span class="n">x</span><span class="p">[</span><span class="mi">0</span><span class="p">:</span><span class="mi">2</span><span class="p">,</span> <span class="p">:]))</span> <span class="o">&lt;</span>  <span class="mf">0.01</span>
+
+    <span class="c1"># ----  alternative TF optimizers</span>
+
+    <span class="n">z</span> <span class="o">=</span> <span class="n">tf</span><span class="o">.</span><span class="n">Variable</span><span class="p">([[</span><span class="mf">0.5</span><span class="p">,</span> <span class="mf">2.5</span><span class="p">],</span> <span class="p">[</span><span class="mf">3.5</span><span class="p">,</span> <span class="mf">4.5</span><span class="p">]],</span> <span class="n">dtype</span><span class="o">=</span><span class="s2">&quot;float64&quot;</span><span class="p">)</span>
+    <span class="c1"># initialise variables AFTER TF optimizers are set up</span>
+
+    <span class="n">m_target</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([[</span><span class="mf">1.1</span><span class="p">,</span> <span class="mf">2.2</span><span class="p">],</span> <span class="p">[</span><span class="mf">3.3</span><span class="p">,</span> <span class="mf">4.4</span><span class="p">]],</span> <span class="n">dtype</span><span class="o">=</span><span class="s2">&quot;float64&quot;</span><span class="p">)</span>
+    <span class="n">m_tf</span><span class="p">,</span> <span class="n">v_tf</span> <span class="o">=</span> <span class="n">k</span><span class="o">.</span><span class="n">tf_predict</span><span class="p">(</span><span class="n">z</span><span class="p">)</span>
+    <span class="n">sd</span> <span class="o">=</span> <span class="n">tf</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">tf</span><span class="o">.</span><span class="n">diag_part</span><span class="p">(</span><span class="n">v_tf</span><span class="p">))</span>
+    <span class="n">mvn</span> <span class="o">=</span> <span class="n">tf</span><span class="o">.</span><span class="n">contrib</span><span class="o">.</span><span class="n">distributions</span><span class="o">.</span><span class="n">MultivariateNormalFullCovariance</span><span class="p">(</span><span class="n">m_tf</span><span class="p">,</span> <span class="n">v_tf</span><span class="p">)</span>
+    <span class="n">loss</span> <span class="o">=</span> <span class="o">-</span><span class="n">tf</span><span class="o">.</span><span class="n">reduce_sum</span><span class="p">(</span><span class="n">mvn</span><span class="o">.</span><span class="n">log_prob</span><span class="p">(</span><span class="n">m_target</span><span class="p">))</span>
+
+    <span class="c1"># Stepsize absolutely crucial</span>
+    <span class="c1"># train_op = tf.train.AdamOptimizer(0.05).minimize(loss)</span>
+    <span class="n">train_op</span> <span class="o">=</span> <span class="n">tf</span><span class="o">.</span><span class="n">train</span><span class="o">.</span><span class="n">RMSPropOptimizer</span><span class="p">(</span><span class="mf">0.05</span><span class="p">)</span><span class="o">.</span><span class="n">minimize</span><span class="p">(</span><span class="n">loss</span><span class="p">)</span>
+    <span class="c1"># train_op = tf.train.GradientDescentOptimizer(0.01).minimize(loss)</span>
+
+    <span class="n">sess</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">tf</span><span class="o">.</span><span class="n">global_variables_initializer</span><span class="p">())</span>  <span class="c1"># needed to init optimizer</span>
+
+    <span class="n">sess</span><span class="o">.</span><span class="n">run</span><span class="p">([</span><span class="n">loss</span><span class="p">,</span> <span class="n">z</span><span class="p">,</span> <span class="n">m_tf</span><span class="p">])</span>
+    <span class="n">min_loss</span> <span class="o">=</span> <span class="mf">1e15</span>
+    <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">200</span><span class="p">):</span>
+        <span class="n">sess</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">train_op</span><span class="p">)</span>
+        <span class="c1"># print(sess.run([loss, z, m]))</span>
+        <span class="n">current_loss</span><span class="p">,</span> <span class="n">current_z</span><span class="p">,</span> <span class="n">current_m_tf</span> <span class="o">=</span> <span class="n">sess</span><span class="o">.</span><span class="n">run</span><span class="p">([</span><span class="n">loss</span><span class="p">,</span> <span class="n">z</span><span class="p">,</span> <span class="n">m_tf</span><span class="p">])</span>
+        <span class="k">if</span> <span class="n">current_loss</span> <span class="o">&lt;</span> <span class="n">min_loss</span><span class="p">:</span>
+            <span class="n">min_loss</span> <span class="o">=</span> <span class="n">current_loss</span>
+            <span class="n">min_result</span> <span class="o">=</span> <span class="p">[</span><span class="n">current_loss</span><span class="p">,</span> <span class="n">current_z</span><span class="p">,</span> <span class="n">current_m_tf</span><span class="p">]</span>
+
+    <span class="n">min_result</span>
+    <span class="n">sess</span><span class="o">.</span><span class="n">run</span><span class="p">([</span><span class="n">loss</span><span class="p">,</span> <span class="n">z</span><span class="p">,</span> <span class="n">m_tf</span><span class="p">])</span>
+
+    <span class="n">min_z</span> <span class="o">=</span> <span class="n">min_result</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+    <span class="k">assert</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">min_z</span> <span class="o">-</span> <span class="n">k</span><span class="o">.</span><span class="n">x</span><span class="p">[</span><span class="mi">0</span><span class="p">:</span><span class="mi">2</span><span class="p">,</span> <span class="p">:]))</span> <span class="o">&lt;</span>  <span class="mf">0.05</span>
+
+</pre></div>
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper"><div class="relations">
+<h3>Related Topics</h3>
+<ul>
+  <li><a href="../../index.html">Documentation overview</a><ul>
+  <li><a href="../index.html">Module code</a><ul>
+  </ul></li>
+  </ul></li>
+</ul>
+</div>
+<div id="searchbox" style="display: none" role="search">
+  <h3>Quick search</h3>
+    <div class="searchformwrapper">
+    <form class="search" action="../../search.html" method="get">
+      <input type="text" name="q" />
+      <input type="submit" value="Go" />
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+    </div>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer">
+      &copy;2019, Lorenz Wernisch.
+      
+      |
+      Powered by <a href="http://sphinx-doc.org/">Sphinx 1.7.4</a>
+      &amp; <a href="https://github.com/bitprophet/alabaster">Alabaster 0.7.10</a>
+      
+    </div>
+
+    
+
+    
+  </body>
+</html>

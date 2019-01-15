@@ -1,0 +1,157 @@
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="X-UA-Compatible" content="IE=Edge" />
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    <title>dynlearn.demo &#8212; dynlearn 0.1 documentation</title>
+    <link rel="stylesheet" href="../../_static/alabaster.css" type="text/css" />
+    <link rel="stylesheet" href="../../_static/pygments.css" type="text/css" />
+    <script type="text/javascript" src="../../_static/documentation_options.js"></script>
+    <script type="text/javascript" src="../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../_static/doctools.js"></script>
+    <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.1/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+    <link rel="index" title="Index" href="../../genindex.html" />
+    <link rel="search" title="Search" href="../../search.html" />
+   
+  <link rel="stylesheet" href="../../_static/custom.css" type="text/css" />
+  
+  
+  <meta name="viewport" content="width=device-width, initial-scale=0.9, maximum-scale=0.9" />
+
+  </head><body>
+  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+  <h1>Source code for dynlearn.demo</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">The module provides functionality to optimise the input to an unknown dynamical</span>
+<span class="sd">system (but with known or estimated dimension) to achieve a certain production</span>
+<span class="sd">level for a target species at a specified time point.</span>
+
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="kn">import</span> <span class="nn">pickle</span>
+<span class="kn">import</span> <span class="nn">numpy</span> <span class="k">as</span> <span class="nn">np</span>
+
+<span class="kn">from</span> <span class="nn">dynlearn</span> <span class="k">import</span> <span class="n">simulation</span> <span class="k">as</span> <span class="n">sf</span><span class="p">,</span> <span class="n">learn</span> <span class="k">as</span> <span class="n">lf</span>
+<span class="kn">from</span> <span class="nn">dynlearn</span> <span class="k">import</span> <span class="n">get_file_name</span>
+
+
+<div class="viewcode-block" id="nanog_demo"><a class="viewcode-back" href="../../index.html#dynlearn.demo.nanog_demo">[docs]</a><span class="k">def</span> <span class="nf">nanog_demo</span><span class="p">():</span>
+    <span class="sd">&quot;&quot;&quot;Optimise input so that a target level of NANOG is produced in the Biomodel</span>
+<span class="sd">    `Chickarmane2006 - Stem cell switch reversible</span>
+<span class="sd">    &lt;https://www.ebi.ac.uk/biomodels/BIOMD0000000203&gt;`_</span>
+<span class="sd">    The model is simulated using a ODE solver of the</span>
+<span class="sd">    `Tellurium &lt;http://tellurium.analogmachine.org/&gt;`_</span>
+<span class="sd">    package for biomolecular models.</span>
+
+<span class="sd">    To optimise the output a Gaussian process state space model (GPSSM) is</span>
+<span class="sd">    constructed from an initial and ``n_epochs`` follow-up experiments. All</span>
+<span class="sd">    species levels of the system at a particular simulation step are input to</span>
+<span class="sd">    the GP, and the increase or decrease in the next simulation step is the</span>
+<span class="sd">    output, ie, there is one GP for each species (assumed to be independent</span>
+<span class="sd">    conditional on the common input). The settings for the Gaussian process</span>
+<span class="sd">    gp parameters (lengthscales for the inputs, variance, and error</span>
+<span class="sd">    variance for the output squared exponential gp) are chosen manually</span>
+<span class="sd">    to fit the range of the variables.</span>
+
+<span class="sd">    The aim is to achieve a level of 50 for NANOG by simulation step 20 (real</span>
+<span class="sd">    time 10). Input is only allowed at steps 0, 5, and 10. The input is</span>
+<span class="sd">    limited to [0.0,1000.0].</span>
+
+<span class="sd">    The optimisation takes a few minutes on a typical workstation. However,</span>
+<span class="sd">    depending on random settings it might take more or fewer epochs to find</span>
+<span class="sd">    an input that induces the desired level of NANOG.</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        Successive optimisation results are stored in a results file</span>
+<span class="sd">        than can be loaded and displayed by running ``dynlearn/demo_plots.py``</span>
+
+<span class="sd">    Call for example under Unix by::</span>
+
+<span class="sd">     python3 dynlearn/demo.py</span>
+<span class="sd">     python3 dynlearn/demo_plots.py</span>
+<span class="sd">     display dynlearn/results/Nanog_target_50.png</span>
+
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">seed</span><span class="p">(</span><span class="mi">123456</span><span class="p">)</span>  <span class="c1"># 123456 with n_samples 10 good</span>
+
+    <span class="n">n_times</span> <span class="o">=</span> <span class="mi">20</span>
+    <span class="n">sim</span> <span class="o">=</span> <span class="n">sf</span><span class="o">.</span><span class="n">StemCellSwitch</span><span class="p">(</span><span class="n">n_times</span><span class="o">=</span><span class="n">n_times</span><span class="p">,</span> <span class="n">real_time</span><span class="o">=</span><span class="mi">10</span><span class="p">)</span>
+
+    <span class="n">loss</span> <span class="o">=</span> <span class="n">lf</span><span class="o">.</span><span class="n">RegularisedEndLoss</span><span class="p">(</span>
+        <span class="n">target</span><span class="o">=</span><span class="mf">50.0</span><span class="p">,</span> <span class="n">target_ind</span><span class="o">=</span><span class="n">sim</span><span class="o">.</span><span class="n">output_vars</span><span class="o">.</span><span class="n">index</span><span class="p">(</span><span class="s1">&#39;NANOG&#39;</span><span class="p">),</span>
+        <span class="n">u_dim</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">time_ind</span><span class="o">=</span><span class="n">sim</span><span class="o">.</span><span class="n">n_times</span> <span class="o">-</span> <span class="mi">1</span><span class="p">,</span> <span class="n">reg_weights</span><span class="o">=</span><span class="mf">0.0</span><span class="p">)</span>
+    <span class="n">gp</span> <span class="o">=</span> <span class="n">lf</span><span class="o">.</span><span class="n">FixedGaussGP</span><span class="p">(</span>
+        <span class="n">lengthscales</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mf">100.0</span> <span class="o">**</span> <span class="mi">2</span><span class="p">,</span> <span class="mf">100.0</span> <span class="o">**</span> <span class="mi">2</span><span class="p">,</span> <span class="mf">100.0</span> <span class="o">**</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">20</span> <span class="o">**</span> <span class="mi">2</span><span class="p">,</span>
+                               <span class="mf">100.0</span> <span class="o">**</span> <span class="mi">2</span><span class="p">,</span> <span class="mf">100.0</span> <span class="o">**</span> <span class="mi">2</span><span class="p">]),</span>
+        <span class="n">variance</span><span class="o">=</span><span class="mi">5</span> <span class="o">**</span> <span class="mi">2</span><span class="p">,</span> <span class="n">likelihood_variance</span><span class="o">=</span><span class="mi">2</span> <span class="o">**</span> <span class="mi">2</span><span class="p">)</span>
+
+    <span class="n">knots</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mi">0</span><span class="p">,</span> <span class="mi">5</span><span class="p">,</span> <span class="mi">10</span><span class="p">])</span>  <span class="c1"># suitable for real_time around 210</span>
+    <span class="n">knot_values</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mf">200.0</span><span class="p">,</span> <span class="mf">150.0</span><span class="p">,</span> <span class="mf">100.0</span><span class="p">])</span>
+    <span class="n">result_lst</span> <span class="o">=</span> <span class="n">lf</span><span class="o">.</span><span class="n">search_u</span><span class="p">(</span><span class="n">sim</span><span class="o">=</span><span class="n">sim</span><span class="p">,</span> <span class="n">loss</span><span class="o">=</span><span class="n">loss</span><span class="p">,</span> <span class="n">gp</span><span class="o">=</span><span class="n">gp</span><span class="p">,</span>
+                             <span class="n">knots</span><span class="o">=</span><span class="n">knots</span><span class="p">,</span> <span class="n">knot_values</span><span class="o">=</span><span class="n">knot_values</span><span class="p">,</span>
+                             <span class="n">x0</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">sim</span><span class="o">.</span><span class="n">output_vars</span><span class="p">)),</span>
+                             <span class="n">u_max_limit</span><span class="o">=</span><span class="mf">1000.0</span><span class="p">,</span> <span class="n">n_epochs</span><span class="o">=</span><span class="mi">6</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="n">n_samples</span><span class="o">=</span><span class="mi">10</span><span class="p">)</span>
+
+    <span class="n">file_name</span> <span class="o">=</span> <span class="n">get_file_name</span><span class="p">(</span><span class="s1">&#39;results/result_list_nanog_50_last.dmp&#39;</span><span class="p">)</span>
+    <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">file_name</span><span class="p">,</span> <span class="s1">&#39;wb&#39;</span><span class="p">)</span> <span class="k">as</span> <span class="n">file_ptr</span><span class="p">:</span>
+        <span class="n">pickle</span><span class="o">.</span><span class="n">dump</span><span class="p">(</span><span class="n">result_lst</span><span class="p">,</span> <span class="n">file_ptr</span><span class="p">)</span>
+        <span class="n">file_ptr</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+</div>
+
+<span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s2">&quot;__main__&quot;</span><span class="p">:</span>
+    <span class="n">nanog_demo</span><span class="p">()</span>
+</pre></div>
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper"><div class="relations">
+<h3>Related Topics</h3>
+<ul>
+  <li><a href="../../index.html">Documentation overview</a><ul>
+  <li><a href="../index.html">Module code</a><ul>
+  </ul></li>
+  </ul></li>
+</ul>
+</div>
+<div id="searchbox" style="display: none" role="search">
+  <h3>Quick search</h3>
+    <div class="searchformwrapper">
+    <form class="search" action="../../search.html" method="get">
+      <input type="text" name="q" />
+      <input type="submit" value="Go" />
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+    </div>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer">
+      &copy;2019, Lorenz Wernisch.
+      
+      |
+      Powered by <a href="http://sphinx-doc.org/">Sphinx 1.7.4</a>
+      &amp; <a href="https://github.com/bitprophet/alabaster">Alabaster 0.7.10</a>
+      
+    </div>
+
+    
+
+    
+  </body>
+</html>
