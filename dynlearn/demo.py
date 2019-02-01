@@ -51,23 +51,33 @@ def nanog_demo():
     """
     np.random.seed(123456)  # 123456 with n_samples 10 good
 
-    n_times = 20
+    n_times = 20  # number of simulation steps
+    # I think real_time is the number of time units to simulate
     sim = sf.StemCellSwitch(n_times=n_times, real_time=10)
 
+    # Choose a loss function that wants NANOG to have expression level of 50
     loss = lf.RegularisedEndLoss(
         target=50.0, target_ind=sim.output_vars.index('NANOG'),
         u_dim=1, time_ind=sim.n_times - 1, reg_weights=0.0)
+
+    # Use a squared exponential covariance function with given length scales
+    # and variances
     gp = lf.FixedGaussGP(
         lengthscales=np.array([100.0 ** 2, 100.0 ** 2, 100.0 ** 2, 20 ** 2,
                                100.0 ** 2, 100.0 ** 2]),
         variance=5 ** 2, likelihood_variance=2 ** 2)
 
+    # The knots are the input steps at which we allow optimisation
     knots = np.array([0, 5, 10])  # suitable for real_time around 210
+    # 210 seems large here?
+    # The knot values are the initial values
     knot_values = np.array([200.0, 150.0, 100.0])
+    #
+    # Optimise the inputs to minimise the given loss
     result_lst = lf.search_u(sim=sim, loss=loss, gp=gp,
                              knots=knots, knot_values=knot_values,
                              x0=np.zeros(len(sim.output_vars)),
-                             u_max_limit=1000.0, n_epochs=6-1, n_samples=10)
+                             u_max_limit=1000.0, n_epochs=6 - 1, n_samples=10)
 
     file_name = get_file_name('results/result_list_nanog_50_last.dmp')
     with open(file_name, 'wb') as file_ptr:
