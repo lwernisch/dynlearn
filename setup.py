@@ -3,7 +3,7 @@ from setuptools import setup, find_packages
 setup(
     name='dynlearn',
     version='0.1.0',
-    # url='https://github.com/mypackage.git',
+    url='https://lwernisch.github.io/dynlearn/',
     author='Lorenz Wernisch',
     author_email='lwernisch@gmail.com',
     description='Dynamical system active learning with Gaussian processes',
