@@ -1,7 +1,14 @@
+#
+# Scientific
 numpy
 scipy
 matplotlib
+#
+# Simulation
 tellurium
+#
+# Admin
+bumpversion
 #
 # Remove tensorflow requirement as user may wish to use tensorflow-gpu
 # (see https://github.com/tensorflow/tensorflow/issues/7166)
