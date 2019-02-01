@@ -212,16 +212,9 @@ def search_u(sim, loss, gp, knots, knot_values, x0, u_max_limit=None,
             - **u_col** (*np.array*): the forcing inputs for the experiment
 
     """
-    # %load_ext autoreload
-    # %autoreload 2
     #
     # Calculate the values of u across all time points from the knots and their values
     u_col = sim.u_tracks_from_knots(sim.n_times, knots, knot_values).T
-    # print(sim.n_times)
-    # print(knots)
-    # print(knot_values)
-    # print(u_col)
-    1 / 0
     #
     # Run the simulation and update the GP with new data
     k, X_span, Y_span = gp.kernel_for_u(u_tracks=u_col.T, sim=sim)
