@@ -6,7 +6,7 @@ setup(
     # url='https://github.com/mypackage.git',
     author='Lorenz Wernisch',
     author_email='lwernisch@gmail.com',
-    description='Acitve learning with Gaussian processes',
+    description='Dynamical system active learning with Gaussian processes',
     packages=find_packages(),
     install_requires=['scipy', 'matplotlib'],
     #
