@@ -3,7 +3,8 @@
 :class:`DiscreteSimulation` implements a discrete step solver,
 while :class:`ContinuousSimulation` applies the
 `Tellurium <http://tellurium.analogmachine.org/>`_ package to solve
-ODE models written in the `Antimony <https://www.ncbi.nlm.nih.gov/pmc/articles/PMC2735663/>`_
+ODE models written in the `Antimony
+<https://www.ncbi.nlm.nih.gov/pmc/articles/PMC2735663/>`_
 systems biology model language.
 
 Example:
@@ -23,7 +24,7 @@ Example:
 
 """
 
-from abc import ABC, abstractmethod
+from abc import abstractmethod
 import matplotlib.pyplot as plt
 import numpy as np
 import tellurium as te  # ignore plot error messages
@@ -60,8 +61,8 @@ class Simulation:
 
 
 class DiscreteSimulation(Simulation):
-    """Solves a dynamical system by iteratively applying a transition function ``f_trans``
-    to the current state values.
+    """Solves a dynamical system by iteratively applying a transition
+    function ``f_trans`` to the current state values.
     """
 
     # Args:
@@ -120,18 +121,21 @@ class FeedForwardOrDSimulation(DiscreteSimulation):
 
     def f_trans_ffw(self, x_old, u):
         x = np.zeros(self.d)
-        x[0] = x_old[0] + u[0] - 0.01 * x_old[0] + np.random.normal(0.0, self.s,
-                                                                    1)  # effectively x = u
-        x[1] = x_old[1] + self.activate(x_old[0], self.a, self.ha, self.ka) - \
-               self.l * x_old[1] + np.random.normal(0.0, self.s, 1)
-        x[2] = x_old[2] + self.activate(x_old[0], self.a, self.ha, self.ka) + \
-               self.inhibit(x_old[1], self.a, self.hi, self.ki) - \
-               self.l * x_old[2] + np.random.normal(0.0, self.s, 1)
+        x[0] = \
+            x_old[0] + u[0] - 0.01 * x_old[0] + \
+            np.random.normal(0.0, self.s, 1)  # effectively x = u
+        x[1] = \
+            x_old[1] + self.activate(x_old[0], self.a, self.ha, self.ka) - \
+            self.l * x_old[1] + np.random.normal(0.0, self.s, 1)
+        x[2] = \
+            x_old[2] + self.activate(x_old[0], self.a, self.ha, self.ka) + \
+            self.inhibit(x_old[1], self.a, self.hi, self.ki) - \
+            self.l * x_old[2] + np.random.normal(0.0, self.s, 1)
         x = np.maximum(x, 0)
         return x
 
 
-# ---------  Continuous simulations with Antimony and RaodRunner
+# ---------  Continuous simulations with Antimony and RoadRunner
 
 
 class ContinuousSimulation(Simulation):
@@ -217,7 +221,7 @@ class FeedForwardOrCSimulation(ContinuousSimulation):
             U0 = 0; X1 = 0; X2 = 0;
             a = 150; ka = 400; ha = 5;
             ki = 300; hi = 5;
-            lu = 0.01; 
+            lu = 0.01;
             l1 = 0.25; l2 = 0.25
         '''
 
@@ -254,7 +258,8 @@ class StemCellSwitch(ContinuousSimulation):
                                       output_vars=['OCT4', 'SOX2', 'NANOG',
                                                    'OCT4_SOX2', 'Protein'],
                                       u_type="step")
-        file_name = get_file_name('biomodels/oct4_reversible_0203_template.ant')
+        file_name = \
+            get_file_name('biomodels/oct4_reversible_0203_template.ant')
         with open(file_name, 'r') as myfile:
             data = myfile.read()
         r = te.loadAntimonyModel(data)
@@ -298,8 +303,9 @@ def demo():
 
     n_times = 20
     sim3 = StemCellSwitch(n_times=n_times, real_time=10.0)
-    input_tracks = sim3.u_tracks_from_knots(sim3.n_times, knots=[0, 5, 10],
-                                            knot_values=[581.88, 143.06, 92.76])
+    input_tracks = \
+        sim3.u_tracks_from_knots(sim3.n_times, knots=[0, 5, 10],
+                                 knot_values=[581.88, 143.06, 92.76])
     sim3.set_inputs(tracks=input_tracks,
                     time_inds=np.arange(input_tracks.shape[1]))
 
@@ -316,16 +322,17 @@ def demo():
 
     n_times = 20
     sim = StemCellSwitch(n_times=n_times, real_time=10.0)
-    knots = np.array(
-        [0, 2, 4, 6, 8, 10, 12, 14, 16, 18])  # suitable for real_time around 20
+    import numpy as np
+    np.arange(20, step=2).dtype
+    knots = np.arange(20, step=2)  # suitable for real_time around 20
     x0 = np.array([10.0, 20.0, 30, 40., 50.0, 60.0, 70.0, 80.0, 100, 110])
-    x = x0
 
     def knot_fct(x, knots, sim, name):
         # maximise the final output of species 'name'
         knot_values = np.array(x)
-        uvals = sim.u_tracks_from_knots(sim.n_times, knots,
-                                        knot_values).T  # uvals always col vector
+        uvals = \
+            sim.u_tracks_from_knots(sim.n_times, knots,
+                                    knot_values).T  # uvals always col vector
         input_tracks = uvals.T
         sim.set_inputs(tracks=input_tracks,
                        time_inds=np.arange(input_tracks.shape[1]))
@@ -334,7 +341,8 @@ def demo():
 
     target_name = 'Protein'
     knot_fct(x0, knots, sim, name=target_name)
-    res = scipy.optimize.minimize(knot_fct, x0=x0, args=(knots, sim, 'Protein'),
+    res = scipy.optimize.minimize(knot_fct, x0=x0,
+                                  args=(knots, sim, 'Protein'),
                                   method="Powell")
     print(res.x)
     print("maximised level of", target_name, "to", -res.fun)

@@ -222,10 +222,10 @@ class Kernel:
         input from ``u_col_tf[1:,:]``. Returned are the values of the species
         variables at each simulation step together with the forcing input.
 
-        TODO: in order to mimick the effect of drawing a single function from
+        TODO: in order to mimic the effect of drawing a single function from
         the GP for the whole recursion one would have to constantly add
         previous sampled outputs as new inputs to the GP. This is not done at
-        the moment for efficiency sake, so effectively each iteration draws a
+        the moment for efficiency's sake, so effectively each iteration draws a
         new transition function from the GP. Future versions should include
         this option.
 
@@ -247,17 +247,24 @@ class Kernel:
         x_r0 = tf.constant(x0, shape=(1, x_dim), dtype="float64")  # as row vec
         # extend u at time_ind 0 to row vec by x0:
         rtracks = tf.concat([tf.reshape(u_col_tf[0, :], (1, -1)), x_r0], 1)
+        #
+        # For each step in the simulation
         for t in range(1, n_steps):
             rtracks_prev = tf.reshape(rtracks[t - 1, :],
                                       (1, -1))  # vector to row array
+            #
+            # Predict next x from previous
             # for prediction need z is (n = 1) x dim array
             x_pred = self.tf_predict_value(rtracks_prev, is_epsilon=is_epsilon,
                                            is_random=is_random)
+            #
+            # Are we predicting the change in x or x itself?
             if is_diff:
-                x_pred = x_pred + rtracks_prev[:,u_dim:] # remove U, only X
+                x_pred = x_pred + rtracks_prev[:, u_dim:]  # remove U, only X
             if is_nonnegative:
                 x_pred = tf.maximum(x_pred, 0)
-
+            #
+            # Concatenate x with u and append to rtracks
             rtracks_current = tf.concat(
                 [tf.reshape(u_col_tf[t, :], (1, -1)), x_pred], 1)
             rtracks = tf.concat([rtracks, rtracks_current], 0)
@@ -277,11 +284,12 @@ def test_kernel():
                x=x)
     k.set_y(y)
 
-    z = np.array([1, 2, 3, 4, 5, 6], dtype="float64").reshape(-1,x.shape[1])
+    z = np.array([1, 2, 3, 4, 5, 6], dtype="float64").reshape(-1, x.shape[1])
 
     # 2D multi output prediction mean, only one covariance:
     m, v = k.np_predict(z)
-    assert np.sum(np.abs(m - y[0:3,:])) < 1e-2
+    assert np.sum(np.abs(m - y[0:3, :])) < 1e-2
+
 
 def test_kernel_tf():
     sess = tf.Session()
@@ -317,8 +325,7 @@ def test_kernel_tf():
 
     m_target = np.array([[1.1, 2.2], [3.3, 4.4]], dtype="float64")
     m_tf, v_tf = k.tf_predict(z)
-    sess.run(m_tf) # mean prediction over z far from m_target
-    sd = tf.sqrt(tf.diag_part(v))
+    sess.run(m_tf)  # mean prediction over z far from m_target
     mvn = tf.contrib.distributions.MultivariateNormalFullCovariance(m_tf, v_tf)
     # loss(z) is log prob(m_target | z, k):
     loss = -tf.reduce_sum(mvn.log_prob(m_target))
@@ -330,7 +337,7 @@ def test_kernel_tf():
     sess.run([loss, z, m_tf])
 
     z_eval = sess.run(z)
-    assert np.sum(np.abs(z_eval - k.x[0:2, :])) <  0.01
+    assert np.sum(np.abs(z_eval - k.x[0:2, :])) < 0.01
 
     # ----  alternative TF optimizers
 
@@ -339,7 +346,6 @@ def test_kernel_tf():
 
     m_target = np.array([[1.1, 2.2], [3.3, 4.4]], dtype="float64")
     m_tf, v_tf = k.tf_predict(z)
-    sd = tf.sqrt(tf.diag_part(v_tf))
     mvn = tf.contrib.distributions.MultivariateNormalFullCovariance(m_tf, v_tf)
     loss = -tf.reduce_sum(mvn.log_prob(m_target))
 
@@ -364,5 +370,4 @@ def test_kernel_tf():
     sess.run([loss, z, m_tf])
 
     min_z = min_result[1]
-    assert np.sum(np.abs(min_z - k.x[0:2, :])) <  0.05
-
+    assert np.sum(np.abs(min_z - k.x[0:2, :])) < 0.05
