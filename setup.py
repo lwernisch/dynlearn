@@ -8,7 +8,7 @@ setup(
     author_email='lwernisch@gmail.com',
     description='Dynamical system active learning with Gaussian processes',
     packages=find_packages(),
-    install_requires=['scipy', 'matplotlib'],
+    install_requires=['numpy', 'scipy', 'matplotlib', 'tellurium'],
     #
     # See https://github.com/tensorflow/tensorflow/issues/7166 for
     # rationale of TF requirement
