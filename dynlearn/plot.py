@@ -1,12 +1,10 @@
-import pickle
-import matplotlib
+"""
+Plot the results of dynlearn.
+"""
 
-import matplotlib.pyplot as plt
 import numpy as np
-import dynlearn.simulation as sf
-from dynlearn import get_file_name
+import matplotlib.pyplot as plt
 
-matplotlib.rcParams['lines.linewidth'] = 2  # for slide plotls thick lines
 
 def plot_single_sim(x_span, y_span, uvals, y_line, ylim):
     x_out = np.hstack([x_span[:, 1:].T, y_span[-1:, :].T])
@@ -83,25 +81,10 @@ def multi_plot_multi_x(sim, result_lst, start=0, y_line=780, ylim=(0, 900),
     plt.tight_layout()
 
 
-def plot_nanog():
-    sim = sf.StemCellSwitch(n_times=20, real_time=10.0)
-
-    file_name = get_file_name('results/result_list_nanog_50_last.dmp')
-    with open(file_name, 'rb') as filep:
-        result_lst = pickle.load(filep)
-        filep.close()
-
+def plot_sim_epochs(sim, result_lst):
     n_rows = int(np.floor(np.sqrt(len(result_lst))))
     n_cols = int(np.ceil(len(result_lst) / n_rows))
 
     plt.figure(figsize=(n_rows * 3, n_cols * 2))
     multi_plot_multi_x(sim, result_lst, start=0, y_line=50, ylim=(0, 85),
                        n_rows=n_rows, n_cols=n_cols)
-    file_name = get_file_name('results/Nanog_target_50.png')
-    plt.savefig(file_name, dpi=100)
-
-
-# --- Nanog 50 plot maximise
-
-if __name__ == "__main__":
-    plot_nanog()

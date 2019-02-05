@@ -1,0 +1,8 @@
+#!/usr/bin/env python
+
+import matplotlib
+from dynlearn import plot
+
+matplotlib.rcParams['lines.linewidth'] = 2  # for slide plots thick lines
+
+plot.plot_nanog()

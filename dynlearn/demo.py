@@ -5,20 +5,29 @@ level for a target species at a specified time point.
 
 """
 
-import pickle
 import numpy as np
 
 from dynlearn import simulation as sf, learn as lf
-from dynlearn import get_file_name
 
 
-def nanog_demo():
+def nanog(knots=np.array([0, 5, 10]),
+          knot_values=np.array([200.0, 150.0, 100.0]),
+          n_samples=10,
+          n_times=20,
+          n_epochs=5):
     """Optimise input so that a target level of NANOG is produced in the Biomodel
     `Chickarmane2006 - Stem cell switch reversible
     <https://www.ebi.ac.uk/biomodels/BIOMD0000000203>`_
     The model is simulated using a ODE solver of the
     `Tellurium <http://tellurium.analogmachine.org/>`_
     package for biomolecular models.
+
+    Args:
+        knots: the input steps at which we allow optimisation of the control input
+        knot_values: the initial values for the control input
+        n_samples: number of samples when simulating from GP dynamical model
+        n_times: number of simulation steps
+        n_epochs: number of epochs of active learning
 
     To optimise the output a Gaussian process state space model (GPSSM) is
     constructed from an initial and ``n_epochs`` follow-up experiments. All
@@ -40,18 +49,16 @@ def nanog_demo():
 
     Returns:
         Successive optimisation results are stored in a results file
-        than can be loaded and displayed by running ``dynlearn/demo_plots.py``
+        than can be loaded and displayed by running ``scripts/demo-nanog-plots``
 
     Call for example under Unix by::
 
-     python3 dynlearn/demo.py
-     python3 dynlearn/demo_plots.py
+     python3 scripts/demo-nanog
+     python3 dynlearn/demo-nanog-plots
      display dynlearn/results/Nanog_target_50.png
 
     """
-    np.random.seed(123456)  # 123456 with n_samples 10 good
 
-    n_times = 20  # number of simulation steps
     # I think real_time is the number of time units to simulate
     sim = sf.StemCellSwitch(n_times=n_times, real_time=10)
 
@@ -67,23 +74,11 @@ def nanog_demo():
                                100.0 ** 2, 100.0 ** 2]),
         variance=5 ** 2, likelihood_variance=2 ** 2)
 
-    # The knots are the input steps at which we allow optimisation
-    knots = np.array([0, 5, 10])  # suitable for real_time around 210
-    # 210 seems large here?
-    # The knot values are the initial values
-    knot_values = np.array([200.0, 150.0, 100.0])
     #
     # Optimise the inputs to minimise the given loss
     result_lst = lf.search_u(sim=sim, loss=loss, gp=gp,
                              knots=knots, knot_values=knot_values,
                              x0=np.zeros(len(sim.output_vars)),
-                             u_max_limit=1000.0, n_epochs=6 - 1, n_samples=10)
+                             u_max_limit=1000.0, n_epochs=n_epochs, n_samples=n_samples)
 
-    file_name = get_file_name('results/result_list_nanog_50_last.dmp')
-    with open(file_name, 'wb') as file_ptr:
-        pickle.dump(result_lst, file_ptr)
-        file_ptr.close()
-
-
-if __name__ == "__main__":
-    nanog_demo()
+    return sim, loss, gp, result_lst

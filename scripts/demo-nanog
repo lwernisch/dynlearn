@@ -1,0 +1,72 @@
+#!/usr/bin/env python
+"""
+Script to run stem cell fate model.
+"""
+
+import argparse
+import pickle
+import os
+import numpy as np
+import matplotlib.pyplot as plt
+from dynlearn import demo, plot, get_file_name
+
+
+#
+# Uncomment below if running inside Jupyter to automagically reload changed modules and
+# Fix command-line arguments
+#
+# %load_ext autoreload
+# %autoreload 2
+# import sys; sys.argv = ['demo-nanog']  # Used when running inside Jupyter
+
+
+#
+# Parse arguments
+#
+parser = argparse.ArgumentParser()
+parser.add_argument("--seed", type=int, default=123456,
+                    help="RNG seed")
+parser.add_argument("-S", "--num-samples", type=int, default=10,
+                    help="Number of samples to draw from GP dynamical model")
+parser.add_argument("-T", "--num-times", type=int, default=20,
+                    help="Number of simulation steps")
+parser.add_argument("-E", "--num-epochs", type=int, default=5,
+                    help="Number of epochs of active learning")
+args = parser.parse_args()
+tag = '{}-{}-{}-{}'.format(args.num_samples,
+                           args.num_times,
+                           args.num_epochs,
+                           args.seed)
+
+
+#
+# Seed RNG
+#
+print('Seeding RNG: {}'.format(args.seed))
+np.random.seed(args.seed)  # 123456 with n_samples 10 good
+
+
+#
+# Run demo
+#
+sim, loss, gp, result_lst = demo.nanog(n_samples=args.num_samples,
+                                       n_times=args.num_times,
+                                       n_epochs=args.num_epochs)
+
+
+#
+# Save results
+#
+file_name = get_file_name('results/nanog-50_{}.dmp'.format(tag))
+print('Saving results to: {}'.format(file_name))
+os.makedirs(os.path.dirname(file_name), exist_ok=True)
+pickle.dump(result_lst, open(file_name, 'wb'))
+
+
+#
+# Plot results
+#
+plot.plot_sim_epochs(sim, result_lst)
+plot_file = get_file_name('results/nanog-50_{}.png'.format(tag))
+print('Saving plot to: {}'.format(plot_file))
+plt.savefig(plot_file, dpi=300)
