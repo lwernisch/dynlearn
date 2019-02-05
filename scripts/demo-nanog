@@ -1,9 +1,9 @@
 #!/usr/bin/env python
 #SBATCH -A MRC-BSU-SL2-CPU
+#SBATCH -p bsu-cpu
 #SBATCH --cpus-per-task=12
 #SBATCH --job-name=NANOG
 #SBATCH --nodes=1
-#SBATCH -p bsu-cpu
 #SBATCH --ntasks-per-node=1
 ##SBATCH --gres=gpu:2
 #SBATCH --time=14:00:00
