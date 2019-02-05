@@ -1,0 +1,12 @@
+#!/bin/bash -e
+#
+# Script to submit Nanog demo to HPC with different seeds
+#
+
+SEED=10
+while [ $SEED -le 50 ]
+do
+  echo " $SEED "
+  sbatch ./demo-nanog --seed=$SEED --num-epochs=20
+  let SEED++
+done

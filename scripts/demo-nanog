@@ -1,4 +1,16 @@
 #!/usr/bin/env python
+#SBATCH -A MRC-BSU-SL2-CPU
+#SBATCH --cpus-per-task=12
+#SBATCH --job-name=NANOG
+#SBATCH --nodes=1
+#SBATCH -p bsu-cpu
+#SBATCH --ntasks-per-node=1
+##SBATCH --gres=gpu:2
+#SBATCH --time=14:00:00
+#SBATCH --mem=29G
+#SBATCH -o out/%x-%j.out
+#SBATCH -e out/%x-%j.out
+
 """
 Script to run stem cell fate model.
 """
@@ -33,6 +45,12 @@ parser.add_argument("-T", "--num-times", type=int, default=20,
 parser.add_argument("-E", "--num-epochs", type=int, default=5,
                     help="Number of epochs of active learning")
 args = parser.parse_args()
+
+
+#
+# Choose a tag to distinguish these results from other results
+# with different arguments
+#
 tag = '{}-{}-{}-{}'.format(args.num_samples,
                            args.num_times,
                            args.num_epochs,
