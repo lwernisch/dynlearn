@@ -176,12 +176,8 @@ def make_u_col_tf(u_col, trainable_inds, u_type, u_max_limit=None,
                     tf_current = tf.minimum(tf_current, u_max_limit)
             u_lst.append(tf_current)  # u's are copies of current knot toleft
     else:
-        print("unknown u_type", u_type)
+        raise ValueError("unknown u_type {}".format(u_type))
     return tf.stack(u_lst, 0)
-
-
-def print_loss(loss_eval, u_eval):
-    print(loss_eval, u_eval)
 
 
 def search_u(sim, loss, gp, knots, knot_values, x0, u_max_limit=None,
@@ -223,11 +219,8 @@ def search_u(sim, loss, gp, knots, knot_values, x0, u_max_limit=None,
 
     with tf.Session() as sess:
         for epoch in range(n_epochs):
-            print("start epoch ", epoch, " with u ",
-                  # np.round(sess.run(u).T[:, knots], 2))
-                  "u_tracks", np.round(u_col.T[:, knots], 2))
-            print("current sim achieves",
-                  np.round(Y_span[n_steps - 1, loss.target_ind], 2))
+            print("Epoch {}: start with u_tracks {}".format(epoch, np.round(u_col.T[:, knots], 2)))
+            print("Epoch {}: current sim achieves {:.2f}".format(epoch, Y_span[n_steps - 1, loss.target_ind]))
 
             #
             # Construct TF variables for the forcing inputs
@@ -263,15 +256,14 @@ def search_u(sim, loss, gp, knots, knot_values, x0, u_max_limit=None,
             #
             # Evaluate the average loss tensor
             mean_loss_eval, u_col = sess.run([mean_loss, u_col_tf])
-            print("loss ", np.round(mean_loss_eval, 2),
-                  " with u_col", np.round(u_col.T[:, ], 2),
-                  " in time ", np.round(time.time() - time0, 2))
+            print("Epoch {}: loss {:.2f} with u_col {} in time {:.1f}s".format(
+                epoch, mean_loss_eval, np.round(u_col.T[:, ], 2), np.round(time.time() - time0, 2)))
 
             #
             # Evaluate the system
             rtracks_lst_eval = sess.run(rtracks_lst)
-            print("mean target ", loss.mean_target(rtracks_lst_eval),
-                  " of target", loss.target)
+            print("Epoch {}: mean target {:.2f} of target {:.2f}".format(
+                epoch, loss.mean_target(rtracks_lst_eval), loss.target))
 
             u_sim = sim.u_tracks_from_knots(sim.n_times,
                                             knots, u_col.T[0, knots]).T
@@ -280,10 +272,8 @@ def search_u(sim, loss, gp, knots, knot_values, x0, u_max_limit=None,
 
             result_lst.append([k, X_span, Y_span, u_col])
 
-            print("end epoch ", epoch, " with u_col ",
-                  np.round(u_col.T[:, knots], 2))
-            print("sim achieves",
-                  np.round(Y_span[n_steps - 1, loss.target_ind], 2))
+            print("Epoch {}: end with u_col {}".format(epoch, np.round(u_col.T[:, knots], 2)))
+            print("Epoch {}: sim achieves {:.2f}".format(epoch, Y_span[n_steps - 1, loss.target_ind]))
 
         # end for loop
     # end with

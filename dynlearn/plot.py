@@ -68,7 +68,7 @@ def plot_sim_multi_x(i, sim, start, result_lst,
     if i == 0:
         plt.legend()
     plt.axhline(y=y_line, color="m", linewidth=1)
-    plt.axvline(x=20, color="k", linewidth=1)
+    # plt.axvline(x=20, color="k", linewidth=1)
     # plt.title('Target: Green at 780')
 
 
@@ -81,10 +81,10 @@ def multi_plot_multi_x(sim, result_lst, start=0, y_line=780, ylim=(0, 900),
     plt.tight_layout()
 
 
-def plot_sim_epochs(sim, result_lst):
+def plot_sim_epochs(sim, loss, result_lst, args):
     n_rows = int(np.floor(np.sqrt(len(result_lst))))
     n_cols = int(np.ceil(len(result_lst) / n_rows))
 
     plt.figure(figsize=(n_rows * 3, n_cols * 2))
-    multi_plot_multi_x(sim, result_lst, start=0, y_line=50, ylim=(0, 85),
+    multi_plot_multi_x(sim, result_lst, start=0, y_line=loss.target, ylim=args['ylim'],
                        n_rows=n_rows, n_cols=n_cols)

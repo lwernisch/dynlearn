@@ -1,0 +1,61 @@
+#!/usr/bin/env python
+
+"""
+Script to simulate from the circadian clock network in Figure 4 of
+Locke et al. 2005.
+
+BioModel: https://www.ebi.ac.uk/biomodels/BIOMD0000000055
+"""
+
+
+import roadrunner as rr
+import tellurium as te
+import matplotlib.pyplot as plt
+from matplotlib import cm
+import numpy as np
+
+#
+# Load model
+#
+USE_ANT = True
+if USE_ANT:
+  ant_file = '../dynlearn/biomodels/locke-2005-circadian-clock.ant'
+  print('Loading Antimony: {}'.format(ant_file))
+  model = te.loadAntimonyModel(ant_file)
+else:
+  sbml_file = '../dynlearn/biomodels/BIOMD0000000055/BIOMD0000000055_url.xml'
+  print('Loading SBML: {}'.format(sbml_file))
+  model = rr.RoadRunner(sbml_file)
+
+#
+# Simulate
+#
+n_steps = 100
+end_time = 96
+print('Simulating {} steps...'.format(n_steps))
+result = model.simulate(0, end_time, n_steps)
+
+#
+# Plot
+#
+plot_file = 'cc-simulate.png'
+print('Plotting: {}'.format(plot_file))
+fig, ax = plt.subplots()
+tod = result[:, 0]  # time of day
+cmap = cm.get_cmap('tab10')
+species_color = dict(zip('LTXYP', cmap.colors))
+loc_style = dict(zip('mcn', ['-', ':', (0, (1, 4))]))
+for s in range(1, result.shape[1]):
+  species = result.colnames[s].strip('[]')
+  color = species_color[species[1]]
+  ls = loc_style[species[2]]
+  expr = result[:, s]
+  if 'cTc' == species:
+    expr /= 10  # put on same scale for plotting
+    species = 'cTc / 10'
+  ax.plot(tod, expr, label=species, color=color, linestyle=ls)
+dayLength = 12  # From Antimony model
+ld = np.ceil(np.sin((np.pi * tod) / dayLength + 0.001) / 2)
+ax.plot(tod, ld, color='k', alpha=.5, label='LD')
+fig.legend()
+fig.savefig(plot_file, dpi=300)

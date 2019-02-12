@@ -1,0 +1,86 @@
+#!/usr/bin/env python
+#SBATCH -A MRC-BSU-SL2-CPU
+#SBATCH -p bsu-cpu
+#SBATCH --cpus-per-task=12
+#SBATCH --job-name=NANOG
+#SBATCH --nodes=1
+#SBATCH --ntasks-per-node=1
+##SBATCH --gres=gpu:2
+#SBATCH --time=14:00:00
+#SBATCH --mem=29G
+#SBATCH -o out/%x-%j.out
+#SBATCH -e out/%x-%j.out
+
+"""
+Script to run dynlearn demo(s).
+"""
+
+import pickle
+import os
+import numpy as np
+import matplotlib.pyplot as plt
+from dynlearn import demo, plot, get_file_name, learn as lf
+
+
+#
+# Uncomment below if running inside Jupyter to automagically reload changed modules and
+# fix command-line arguments
+#
+# %load_ext autoreload
+# %autoreload 2
+# import sys; sys.argv = ['demo-nanog', '--loss=ffl-780', '-E=2']  # Used when running inside Jupyter
+
+
+#
+# Parse arguments
+#
+args = demo.arg_parser().parse_args()
+
+
+#
+# Choose a tag to distinguish these results from other results
+# with different arguments
+#
+tag = demo.tag_from_args(args)
+
+
+#
+# Seed RNG
+#
+print('Seeding RNG: {}'.format(args.seed))
+np.random.seed(args.seed)  # 123456 with n_samples 10 good
+
+
+#
+# Set up (configure) simulator, loss function, GP and knots
+#
+sim, loss, gp, knots, knot_values, plot_args = demo.setup(args)
+
+
+#
+# Optimise the inputs to minimise the given loss
+#
+result_lst = lf.search_u(sim=sim, loss=loss, gp=gp,
+                         knots=knots, knot_values=knot_values,
+                         x0=np.zeros(len(sim.output_vars)),
+                         u_max_limit=1000.0, n_epochs=args.num_epochs, n_samples=args.num_samples)
+
+
+#
+# Save results
+#
+file_name = get_file_name('results/{}.dmp'.format(tag))
+print('Saving results to: {}'.format(file_name))
+os.makedirs(os.path.dirname(file_name), exist_ok=True)
+pickle.dump(result_lst, open(file_name, 'wb'))
+
+
+#
+# Plot results
+#
+plt.figure()
+plot.plot_sim_epochs(sim, loss, result_lst, plot_args)
+plot_file = get_file_name('results/{}.png'.format(tag))
+print('Saving plot to: {}'.format(plot_file))
+plt.savefig(plot_file, dpi=300)
+plt.close('all')

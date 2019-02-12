@@ -6,15 +6,73 @@ level for a target species at a specified time point.
 """
 
 import numpy as np
-
+import argparse
 from dynlearn import simulation as sf, learn as lf
 
 
-def nanog(knots=np.array([0, 5, 10]),
-          knot_values=np.array([200.0, 150.0, 100.0]),
-          n_samples=10,
-          n_times=20,
-          n_epochs=5):
+def setup(args):
+    if 'nanog-50' == args.demo:
+        return nanog_target(args=args)
+    if 'ffl-780' == args.demo:
+        return ffl_target(args=args)
+    else:
+        raise ValueError('Unknown demo: {}'.format(args.demo))
+
+
+def arg_parser():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--demo", default='nanog-50',
+                        help="Which demo to use")
+    parser.add_argument("-S", "--num-samples", type=int, default=10,
+                        help="Number of samples to draw from GP dynamical model")
+    parser.add_argument("-T", "--num-times", type=int, default=20,
+                        help="Number of simulation steps")
+    parser.add_argument("-E", "--num-epochs", type=int, default=5,
+                        help="Number of epochs of active learning")
+    parser.add_argument("--seed", type=int, default=123456,
+                        help="RNG seed")
+    return parser
+
+
+def tag_from_args(args):
+    "Construct a string that represents the arguments."
+    return '{}-{}-{}-{}-{}'.format(args.demo,
+                                   args.num_samples,
+                                   args.num_times,
+                                   args.num_epochs,
+                                   args.seed)
+
+
+def ffl_target(args):
+    """Optimise input so that the level of ``x3`` goes to 780.
+
+    The simulator is a feed-forward loop.
+    """
+    # I think real_time is the number of time units to simulate
+    sim = sf.FeedForwardOrCSimulation(n_times=args.num_times, real_time=20)
+
+    # Choose a loss function that wants X2 to have expression level of 780
+    loss = lf.RegularisedEndLoss(
+        target=780.0, target_ind=sim.output_vars.index('X2'),
+        u_dim=1, time_ind=sim.n_times - 1, reg_weights=0.0)
+
+    # Use a squared exponential covariance function with given length scales
+    # and variances
+    gp = lf.FixedGaussGP(
+        lengthscales=np.array([100.0 ** 2, 100.0 ** 2, 100.0 ** 2, 100.0 ** 2]),
+        variance=5 ** 2, likelihood_variance=2 ** 2)
+
+    # Choose the knots at which we can control the input and the initial values
+    knots = np.array([0, 5, 10])
+    knot_values = np.array([300.0, 200.0, 100.0])
+
+    # Plotting arguments
+    plot_args = {'ylim': (0, 900)}
+
+    return sim, loss, gp, knots, knot_values, plot_args
+
+
+def nanog_target(args):
     """Optimise input so that a target level of NANOG is produced in the Biomodel
     `Chickarmane2006 - Stem cell switch reversible
     <https://www.ebi.ac.uk/biomodels/BIOMD0000000203>`_
@@ -23,11 +81,9 @@ def nanog(knots=np.array([0, 5, 10]),
     package for biomolecular models.
 
     Args:
+        args: configuration
         knots: the input steps at which we allow optimisation of the control input
         knot_values: the initial values for the control input
-        n_samples: number of samples when simulating from GP dynamical model
-        n_times: number of simulation steps
-        n_epochs: number of epochs of active learning
 
     To optimise the output a Gaussian process state space model (GPSSM) is
     constructed from an initial and ``n_epochs`` follow-up experiments. All
@@ -60,7 +116,7 @@ def nanog(knots=np.array([0, 5, 10]),
     """
 
     # I think real_time is the number of time units to simulate
-    sim = sf.StemCellSwitch(n_times=n_times, real_time=10)
+    sim = sf.StemCellSwitch(n_times=args.num_times, real_time=10)
 
     # Choose a loss function that wants NANOG to have expression level of 50
     loss = lf.RegularisedEndLoss(
@@ -74,11 +130,11 @@ def nanog(knots=np.array([0, 5, 10]),
                                100.0 ** 2, 100.0 ** 2]),
         variance=5 ** 2, likelihood_variance=2 ** 2)
 
-    #
-    # Optimise the inputs to minimise the given loss
-    result_lst = lf.search_u(sim=sim, loss=loss, gp=gp,
-                             knots=knots, knot_values=knot_values,
-                             x0=np.zeros(len(sim.output_vars)),
-                             u_max_limit=1000.0, n_epochs=n_epochs, n_samples=n_samples)
+    # Choose the knots at which we can control the input and the initial values
+    knots = np.array([0, 5, 10])
+    knot_values = np.array([200.0, 150.0, 100.0])
 
-    return sim, loss, gp, result_lst
+    # Plotting arguments
+    plot_args = {'ylim': (0, 80)}
+
+    return sim, loss, gp, knots, knot_values, plot_args

@@ -198,7 +198,7 @@ class ContinuousSimulation(Simulation):
 class FeedForwardOrCSimulation(ContinuousSimulation):
     """
     A simple example of a regulatory feedforward loop implemented as Antinomy
-    model: U0 activates both, X1 and X2, but X2 is inhibited by X1. For
+    model: U0 activates both X1 and X2, but X2 is inhibited by X1. For
     details see the OR-gate I1 FFL in `Ocone et al,
     2015 <https://www.ncbi.nlm.nih.gov/pubmed/26072513>`_
 
