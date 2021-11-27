@@ -28,7 +28,7 @@ from dynlearn import demo, plot, get_file_name, learn as lf
 #
 # %load_ext autoreload
 # %autoreload 2
-# import sys; sys.argv = ['demo-nanog', '--loss=ffl-780', '-E=2']  # Used when running inside Jupyter
+# import sys; sys.argv = ['dynlearn-demo', '-E=3']  # Used when running inside Jupyter
 
 
 #
@@ -36,13 +36,11 @@ from dynlearn import demo, plot, get_file_name, learn as lf
 #
 args = demo.arg_parser().parse_args()
 
-
 #
 # Choose a tag to distinguish these results from other results
 # with different arguments
 #
 tag = demo.tag_from_args(args)
-
 
 #
 # Seed RNG
@@ -50,21 +48,19 @@ tag = demo.tag_from_args(args)
 print('Seeding RNG: {}'.format(args.seed))
 np.random.seed(args.seed)  # 123456 with n_samples 10 good
 
-
 #
 # Set up (configure) simulator, loss function, GP and knots
 #
 sim, loss, gp, knots, knot_values, plot_args = demo.setup(args)
 
-
 #
 # Optimise the inputs to minimise the given loss
 #
-result_lst = lf.search_u(sim=sim, loss=loss, gp=gp,
-                         knots=knots, knot_values=knot_values,
-                         x0=np.zeros(len(sim.output_vars)),
-                         u_max_limit=1000.0, n_epochs=args.num_epochs, n_samples=args.num_samples)
-
+epoch_results = lf.search_u(sim=sim, loss=loss, gp=gp,
+                            knots=knots, knot_values=knot_values,
+                            x0=np.zeros(len(sim.output_vars)),
+                            u_max_limit=1000.0, n_epochs=args.num_epochs, n_samples=args.num_samples)
+epoch = epoch_results[3]
 
 #
 # Save results
@@ -72,14 +68,13 @@ result_lst = lf.search_u(sim=sim, loss=loss, gp=gp,
 file_name = get_file_name('results/{}.dmp'.format(tag))
 print('Saving results to: {}'.format(file_name))
 os.makedirs(os.path.dirname(file_name), exist_ok=True)
-pickle.dump(result_lst, open(file_name, 'wb'))
-
+pickle.dump(epoch_results, open(file_name, 'wb'))
 
 #
 # Plot results
 #
 plt.figure()
-plot.plot_sim_epochs(sim, loss, result_lst, plot_args)
+plot.plot_sim_epochs(sim, loss, epoch_results, plot_args)
 plot_file = get_file_name('results/{}.png'.format(tag))
 print('Saving plot to: {}'.format(plot_file))
 plt.savefig(plot_file, dpi=300)

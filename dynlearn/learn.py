@@ -41,29 +41,28 @@ class RegularisedEndLoss(Loss):
         self.reg_weights = reg_weights
 
     def mean_loss(self, rtracks_lst, u):
-        sum = 0.0
+        total_loss = 0.0
         # sumsq = 0.0
         target_u_ind = self.u_dim + self.target_ind
         for rtracks in rtracks_lst:
             if (self.target == 9999.0):
-                l = - tf.square(rtracks[self.time_ind, target_u_ind])
+                loss = - tf.square(rtracks[self.time_ind, target_u_ind])
             elif (self.target == -9999.0):
-                l = tf.square(rtracks[self.time_ind, target_u_ind])
+                loss = tf.square(rtracks[self.time_ind, target_u_ind])
             else:
-                l = tf.square(
+                loss = tf.square(
                     rtracks[self.time_ind, target_u_ind] - self.target)
-            sum += l
-            # sumsq += l**2
-        mean_loss = sum / len(rtracks_lst) + self.reg_weights * tf.reduce_sum(
-            tf.abs(u))
+            total_loss += loss
+            # sumsq += loss**2
+        mean_loss = total_loss / len(rtracks_lst) + self.reg_weights * tf.reduce_sum(tf.abs(u))
         # sd_loss = tf.sqrt(sumsq/n_lst - mean_loss**2)
         return mean_loss  # - 2.0*sd_loss
 
     def mean_target(self, rtracks_lst_eval):
-        sum = 0
+        total_loss = 0
         for rtracks in rtracks_lst_eval:
-            sum += rtracks[self.time_ind, self.u_dim + self.target_ind]
-        return sum / len(rtracks_lst_eval)
+            total_loss += rtracks[self.time_ind, self.u_dim + self.target_ind]
+        return total_loss / len(rtracks_lst_eval)
 
 
 # ------- Kernel classes
@@ -83,10 +82,10 @@ class FixedGaussGP:
         adds the resulting input-output relationship to the GP *k*.
 
         Args:
-            u_tracks ((t,k) np.array): the new forcing inputs
+            u_tracks (ndarray): the new forcing inputs
             sim (simulation.Simulation): the experiment simulator
             k (gp_kernels.Kernel): represents the GP, if None newly created
-            is_diff: differences are modelled
+            is_diff (bool): differences are modelled
 
         Returns:
             A tuple with (*t* is number steps, *d* state dim including
@@ -140,8 +139,8 @@ def make_u_col_tf(u_col, trainable_inds, u_type, u_max_limit=None,
     according to either a 'peak' or 'step' version of the input
 
     Args:
-        u_col ((t,d) np.array): forcing *d*-dim inputs to dynamical system
-        trainable_inds (list(int)): simulation steps where input can be optimised
+        u_col (ndarray): forcing *d*-dim inputs to dynamical system
+        trainable_inds (List[int]): simulation steps where input can be optimised
 
     Returns:
         *(t,d)* tf.Tensor containing the trainable TF variables
@@ -194,17 +193,19 @@ def search_u(sim, loss, gp, knots, knot_values, x0, u_max_limit=None,
         sim (simulation.Simulation): the simulator for experiments
         loss (Loss): target loss
         gp (FixedGaussGP): GP for estimating dynamical system
-        knots (list(int)): simulation steps where input can be optimised
-        knot_values (list(float)): starting values for forcing input
-        x0 (list(float)): starting values for nonforced species
+        knots (List[int]): simulation steps where input can be optimised
+        knot_values (List[float]): starting values for forcing input
+        x0 (List[float]): starting values for nonforced species
         u_max_limit (float): limit on maximum for forcing input
         n_epochs (int): number of experiments which can be performed
         n_samples (int): number of random realisations from the GP recursion
 
     Returns:
-        A list item for each epoch. The item contains
+        A list with one item per epoch. The item contains
 
             - the output of `FixedGaussGP.kernel_for_u` for the experiment
+            - `X_span`
+            - `Y_span`
             - **u_col** (*np.array*): the forcing inputs for the experiment
 
     """

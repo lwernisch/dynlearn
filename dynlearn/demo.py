@@ -82,8 +82,6 @@ def nanog_target(args):
 
     Args:
         args: configuration
-        knots: the input steps at which we allow optimisation of the control input
-        knot_values: the initial values for the control input
 
     To optimise the output a Gaussian process state space model (GPSSM) is
     constructed from an initial and ``n_epochs`` follow-up experiments. All
