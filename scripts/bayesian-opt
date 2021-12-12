@@ -71,7 +71,7 @@ print(res.message)
 print("Maximised level of {} to {:.2f} in {} iterations using {} function evaluations".format(
     name, -res.fun, res.nit, res.nfev))
 print('Optimal inputs: {}'.format(np.round(res.x, 2)))
-plot_sim(res.x, 'scipy-opt.pdf')
+plot_sim(res.x, 'plots/scipy-opt.pdf')
 
 #
 # Optimise with GPyOpt
@@ -87,4 +87,4 @@ print('Optimal inputs: {}'.format(np.round(my_opt.x_opt, 2)))
 dir(my_opt)
 my_opt.get_evaluations()[0].shape
 my_opt.get_evaluations()[1]
-plot_sim(my_opt.x_opt, 'bayes-opt.pdf')
+plot_sim(my_opt.x_opt, 'plots/bayes-opt.pdf')

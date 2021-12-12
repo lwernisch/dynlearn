@@ -46,7 +46,7 @@ print(result.colnames)
 #
 # Plot
 #
-plot_file = 'th1-simulate.pdf'
+plot_file = 'plots/th1-simulate.pdf'
 print('Plotting: {}'.format(plot_file))
 fig, ax = plt.subplots()
 tod = result[:, 0]  # time of day
