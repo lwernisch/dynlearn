@@ -1,0 +1,65 @@
+#!/usr/bin/env python
+
+"""
+Script to simulate from the Th1 differentiation network of Schulz et al. 2009.
+
+BioModel: https://www.ebi.ac.uk/biomodels/BIOMD0000000215
+https://www.ebi.ac.uk/biomodels/content/model-of-the-month?year=2011&month=01
+"""
+
+
+import os
+import roadrunner as rr
+import tellurium as te
+import matplotlib.pyplot as plt
+from matplotlib import cm
+
+
+#
+# Load model
+#
+ANT_FILE = '../dynlearn/biomodels/schulz-2009-Th1-differentiation.ant'
+SBML_FILE = '../dynlearn/biomodels/schulz-2009-Th1-differentiation.sbml'
+USE_ANT = False
+if USE_ANT:
+    print('Loading Antimony: {}'.format(ANT_FILE))
+    model = te.loadAntimonyModel(ANT_FILE)
+else:
+    print('Loading SBML: {}'.format(SBML_FILE))
+    model = rr.RoadRunner(SBML_FILE)
+    #
+    # Convert SBML to Antimony if not done already
+    if not os.path.exists(ANT_FILE):
+        print('Converting SBML to Antimony: {}'.format(ANT_FILE))
+        ant_model = te.sbmlToAntimony(SBML_FILE)
+        open(ANT_FILE, 'w').write(ant_model)
+
+#
+# Simulate
+#
+n_steps = 100
+end_time = 96
+print('Simulating {} steps...'.format(n_steps))
+result = model.simulate(0, end_time, n_steps)
+print(result.colnames)
+
+#
+# Plot
+#
+plot_file = 'th1-simulate.pdf'
+print('Plotting: {}'.format(plot_file))
+fig, ax = plt.subplots()
+tod = result[:, 0]  # time of day
+cmap = cm.get_cmap('tab10')
+for s in range(1, result.shape[1]):
+    species = result.colnames[s].strip('[]')
+    # color = species_color[species[1]]
+    # ls = loc_style[species[2]]
+    expr = result[:, s]
+    if 'Prot' in species:
+        expr /= 100  # put on same scale for plotting
+        species = '{} / 100'.format(species)
+    # ax.plot(tod, expr, label=species, color=color, linestyle=ls)
+    ax.plot(tod, expr, label=species)
+fig.legend()
+fig.savefig(plot_file, dpi=300)
