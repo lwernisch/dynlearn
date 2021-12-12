@@ -1,0 +1,82 @@
+#!/usr/bin/env python
+
+"""
+Script to simulate from the PD1 inhibiting TCR signalling model
+
+BioModel: https://www.ebi.ac.uk/biomodels/BIOMD0000000724
+https://www.ebi.ac.uk/biomodels/content/model-of-the-month?year=2019&month=01
+"""
+
+
+import os
+import roadrunner as rr
+import tellurium as te
+import matplotlib.pyplot as plt
+from matplotlib import cm
+
+
+#
+# Load model
+#
+model_name = 'theinmozhi-2018'
+ANT_FILE = '../dynlearn/biomodels/{}.ant'.format(model_name)
+SBML_FILE = '../dynlearn/biomodels/{}.sbml'.format(model_name)
+USE_ANT = True
+if USE_ANT:
+    print('Loading Antimony: {}'.format(ANT_FILE))
+    model = te.loadAntimonyModel(ANT_FILE)
+else:
+    print('Loading SBML: {}'.format(SBML_FILE))
+    model = rr.RoadRunner(SBML_FILE)
+    #
+    # Convert SBML to Antimony if not done already
+    if not os.path.exists(ANT_FILE):
+        print('Converting SBML to Antimony: {}'.format(ANT_FILE))
+        ant_model = te.sbmlToAntimony(SBML_FILE)
+        open(ANT_FILE, 'w').write(ant_model)
+
+#
+# Simulate
+#
+n_steps = 100
+end_time = 2500
+print('Simulating {} steps...'.format(n_steps))
+result = model.simulate(0, end_time, n_steps)
+print(result.colnames)
+
+LCKactive = result['[LCKya]'] + result['[LCKyiya]']
+LCKinactive = result['[LCKi]'] + result['[LCKyi]'] + result['[LCKpi]']
+LCKpercent = 100 * LCKactive / (LCKactive + LCKinactive)
+
+#
+# Plot
+#
+plot_file = os.path.join('plots', '{}.pdf'.format(model_name))
+print('Plotting: {}'.format(plot_file))
+fig, ax = plt.subplots()
+tod = result[:, 0]  # time of day
+cmap = cm.get_cmap('tab10')
+plot_species = ['PD1', 'SHP2', 'LCK', 'CD28', 'CD3', 'PI3K', 'ZAP70']
+
+
+def want_to_plot(species):
+    for sp in plot_species:
+        if species.startswith(sp):
+            return True
+    return False
+
+
+for s in range(1, result.shape[1]):
+    species = result.colnames[s].strip('[]')
+    if not want_to_plot(species):
+        continue
+    # color = species_color[species[1]]
+    # ls = loc_style[species[2]]
+    expr = result[:, s]
+    if 'Prot' in species:
+        expr /= 100  # put on same scale for plotting
+        species = '{} / 100'.format(species)
+    # ax.plot(tod, expr, label=species, color=color, linestyle=ls)
+    ax.plot(tod, expr, label=species)
+fig.legend()
+fig.savefig(plot_file, dpi=300)
