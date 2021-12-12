@@ -4,7 +4,7 @@ setup(
     name='dynlearn',
     version='0.1.0',
     url='https://lwernisch.github.io/dynlearn/',
-    author='Lorenz Wernisch',
+    author='Lorenz Wernisch and John Reid',
     author_email='lwernisch@gmail.com',
     description='Dynamical system active learning with Gaussian processes',
     packages=find_packages(),
