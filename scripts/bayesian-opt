@@ -1,0 +1,90 @@
+#!/usr/bin/env python
+
+"""
+A script to optimise control inputs using Bayesian optimisation.
+"""
+
+import numpy as np
+import scipy
+import matplotlib.pyplot as plt
+import GPy
+from GPyOpt.methods import BayesianOptimization
+from dynlearn import simulation as sf
+
+
+def simulate(knot_values):
+    uvals = \
+        sim.u_tracks_from_knots(sim.n_times, knots, knot_values).T  # uvals always col vector
+    input_tracks = uvals.T
+    sim.set_inputs(tracks=input_tracks,
+                   time_inds=np.arange(input_tracks.shape[1]))
+    sim.dynamic_simulate()
+    level = sim.X[sim.output_vars.index(name), -1]
+    print('Simulated inputs: {}, level: {:.2f}'.format(np.round(knot_values, 2), level))
+    return sim, level
+
+
+def f(knot_values):
+    """The function to minimise.
+    """
+    sim, level = simulate(np.array(knot_values))
+    return (target_level - level) ** 2
+
+
+def bo_f(x):
+    """Function to minimise using GPyOpt.
+    """
+    nrow = x.shape[0]
+    result = np.empty(nrow)
+    for i in range(nrow):
+        result[i] = f(x[i])
+    return result
+
+
+def plot_sim(x0, filename):
+    "Plot a simulation."
+    sim, level = simulate(x0)
+    result = sim.X.T
+    fig, ax = plt.subplots()
+    for j in range(result.shape[1]):
+        ax.plot(result[:, j], label=sim.output_vars[j])
+    ax.legend()
+    fig.savefig(filename)
+
+
+#
+# Configure the simulation
+#
+n_times = 20
+sim = sf.StemCellSwitch(n_times=n_times, real_time=10.0)
+# Choose the knots at which we can control the input and the initial values
+knots = np.array([0, 5, 10])
+x0 = np.array([200.0, 150.0, 100.0])
+name = 'NANOG'
+target_level = 50
+
+#
+# Optimise with scipy
+print('Optimising with scipy')
+res = scipy.optimize.minimize(f, x0=x0, method="Powell")
+print(res.message)
+print("Maximised level of {} to {:.2f} in {} iterations using {} function evaluations".format(
+    name, -res.fun, res.nit, res.nfev))
+print('Optimal inputs: {}'.format(np.round(res.x, 2)))
+plot_sim(res.x, 'scipy-opt.pdf')
+
+#
+# Optimise with GPyOpt
+kernel = GPy.kern.Matern52(input_dim=len(knots), variance=2**2, lengthscale=200)
+domain = [{'name': 'knot_values', 'type': 'continuous', 'domain': (0, 300), 'dimensionality': len(knots)}]
+print('Initialising GPyOpt')
+my_opt = BayesianOptimization(f=bo_f, domain=domain, kernel=kernel, noise_var=.05**2)
+print('Optimising with GPyOpt')
+my_opt.run_optimization(max_iter=20)
+print("Maximised level of {} to {:.2f} using {} function evaluations".format(
+    name, -my_opt.fx_opt, len(my_opt.get_evaluations()[1])))
+print('Optimal inputs: {}'.format(np.round(my_opt.x_opt, 2)))
+dir(my_opt)
+my_opt.get_evaluations()[0].shape
+my_opt.get_evaluations()[1]
+plot_sim(my_opt.x_opt, 'bayes-opt.pdf')
