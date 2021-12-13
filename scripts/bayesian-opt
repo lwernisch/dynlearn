@@ -4,8 +4,12 @@
 A script to optimise control inputs using Bayesian optimisation.
 """
 
+from pathlib import Path
+from itertools import accumulate
 import numpy as np
+import pandas as pd
 import scipy
+import altair as alt
 import matplotlib.pyplot as plt
 import GPy
 from GPyOpt.methods import BayesianOptimization
@@ -24,10 +28,16 @@ def simulate(knot_values):
     return sim, level
 
 
+def error_so_far(simulation_history):
+    """Yield the best error so far given the simulation history."""
+    return accumulate(np.abs(np.array(simulation_history) - target_level), min)
+
+
 def f(knot_values):
     """The function to minimise.
     """
     sim, level = simulate(np.array(knot_values))
+    simulation_history.append(level)
     return (target_level - level) ** 2
 
 
@@ -52,6 +62,9 @@ def plot_sim(x0, filename):
     fig.savefig(filename)
 
 
+plot_dir = Path('plots')
+plot_dir.mkdir(exist_ok=True)
+
 #
 # Configure the simulation
 #
@@ -66,17 +79,20 @@ target_level = 50
 #
 # Optimise with scipy
 print('Optimising with scipy')
-res = scipy.optimize.minimize(f, x0=x0, method="Powell")
+simulation_history = []
+res = scipy.optimize.minimize(f, x0=x0, method="Powell", options=dict(maxfev=30))
 print(res.message)
 print("Maximised level of {} to {:.2f} in {} iterations using {} function evaluations".format(
     name, -res.fun, res.nit, res.nfev))
 print('Optimal inputs: {}'.format(np.round(res.x, 2)))
-plot_sim(res.x, 'plots/scipy-opt.pdf')
+plot_sim(res.x, plot_dir / 'scipy-opt.pdf')
+scipy_errors = pd.Series(error_so_far(simulation_history))
 
 #
 # Optimise with GPyOpt
 kernel = GPy.kern.Matern52(input_dim=len(knots), variance=2**2, lengthscale=200)
 domain = [{'name': 'knot_values', 'type': 'continuous', 'domain': (0, 300), 'dimensionality': len(knots)}]
+simulation_history = []
 print('Initialising GPyOpt')
 my_opt = BayesianOptimization(f=bo_f, domain=domain, kernel=kernel, noise_var=.05**2)
 print('Optimising with GPyOpt')
@@ -87,4 +103,17 @@ print('Optimal inputs: {}'.format(np.round(my_opt.x_opt, 2)))
 dir(my_opt)
 my_opt.get_evaluations()[0].shape
 my_opt.get_evaluations()[1]
-plot_sim(my_opt.x_opt, 'plots/bayes-opt.pdf')
+plot_sim(my_opt.x_opt, plot_dir / 'bayes-opt.pdf')
+bo_errors = pd.Series(error_so_far(simulation_history))
+
+results = pd.DataFrame(data=dict(scipy=scipy_errors, Bayesian=bo_errors))
+results['evaluations'] = np.arange(len(results))
+results_m = results.melt(id_vars='evaluations', var_name='optimiser', value_name='error')
+error_chart = (
+    alt.Chart(results_m)
+    .mark_line()
+    .encode(x='evaluations', y='error', color='optimiser')
+    .properties(width=300, height=200)
+)
+error_chart.save('plots/errors.png', scale_factor=100)
+results_m
