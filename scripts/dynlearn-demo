@@ -15,11 +15,12 @@
 Script to run dynlearn demo(s).
 """
 
+from pathlib import Path
 import pickle
-import os
 import numpy as np
 import matplotlib.pyplot as plt
-from dynlearn import demo, plot, get_file_name, learn as lf
+import tensorflow as tf
+from dynlearn import demo, plot, learn as lf
 
 
 #
@@ -48,34 +49,38 @@ tag = demo.tag_from_args(args)
 print('Seeding RNG: {}'.format(args.seed))
 np.random.seed(args.seed)  # 123456 with n_samples 10 good
 
-#
-# Set up (configure) simulator, loss function, GP and knots
-#
-sim, loss, gp, knots, knot_values, plot_args = demo.setup(args)
+with tf.device(args.device):
+    #
+    # Set up (configure) simulator, loss function, GP and knots
+    #
+    sim, loss, gp, knots, knot_values, plot_args = demo.setup(args)
 
-#
-# Optimise the inputs to minimise the given loss
-#
-epoch_results = lf.search_u(sim=sim, loss=loss, gp=gp,
-                            knots=knots, knot_values=knot_values,
-                            x0=np.zeros(len(sim.output_vars)),
-                            u_max_limit=1000.0, n_epochs=args.num_epochs, n_samples=args.num_samples)
-epoch = epoch_results[3]
+    #
+    # Optimise the inputs to minimise the given loss
+    #
+    epoch_results = lf.search_u(sim=sim, loss=loss, gp=gp,
+                                knots=knots, knot_values=knot_values,
+                                x0=np.zeros(len(sim.output_vars)),
+                                u_max_limit=1000.0, n_epochs=args.num_epochs, n_samples=args.num_samples)
+    epoch = epoch_results[3]
 
 #
 # Save results
 #
-file_name = get_file_name('results/{}.dmp'.format(tag))
-print('Saving results to: {}'.format(file_name))
-os.makedirs(os.path.dirname(file_name), exist_ok=True)
-pickle.dump(epoch_results, open(file_name, 'wb'))
+results_dir = Path('results')
+results_dir.mkdir(exist_ok=True)
+results_path = results_dir / f'{tag}.dmp'
+print(f'Saving results to: {results_path}')
+pickle.dump(epoch_results, results_path.open('wb'))
 
 #
 # Plot results
 #
+plots_dir = Path('plots')
+plots_dir.mkdir(exist_ok=True)
+plot_path = plots_dir / f'{tag}.png'
 plt.figure()
 plot.plot_sim_epochs(sim, loss, epoch_results, plot_args)
-plot_file = get_file_name('results/{}.png'.format(tag))
-print('Saving plot to: {}'.format(plot_file))
-plt.savefig(plot_file, dpi=300)
+print(f'Saving plot to: {plot_path}')
+plt.savefig(plot_path, dpi=300)
 plt.close('all')

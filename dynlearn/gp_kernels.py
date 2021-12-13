@@ -197,7 +197,7 @@ class Kernel:
         # stabilise for Cholesky with cholesky_epsilon*I
         var = var + cholesky_epsilon * tf.eye(tf.shape(var)[0],
                                               dtype="float64")
-        return mean + tf.matmul(tf.cholesky(var), random_vecs)
+        return mean + tf.matmul(tf.linalg.cholesky(var), random_vecs)
 
     def tf_predict_random_single(self, z, is_epsilon=False):
         random_vecs = tf.constant(

@@ -266,10 +266,8 @@ def search_u(sim, loss, gp, knots, knot_values, x0, u_max_limit=None,
             print("Epoch {}: mean target {:.2f} of target {:.2f}".format(
                 epoch, loss.mean_target(rtracks_lst_eval), loss.target))
 
-            u_sim = sim.u_tracks_from_knots(sim.n_times,
-                                            knots, u_col.T[0, knots]).T
-            k, X_span, Y_span = gp.kernel_for_u(u_tracks=u_sim.T, sim=sim,
-                                                k=k)
+            u_sim = sim.u_tracks_from_knots(sim.n_times, knots, u_col.T[0, knots]).T
+            k, X_span, Y_span = gp.kernel_for_u(u_tracks=u_sim.T, sim=sim, k=k)
 
             result_lst.append([k, X_span, Y_span, u_col])
 

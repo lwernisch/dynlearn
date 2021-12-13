@@ -21,16 +21,13 @@ def setup(args):
 
 def arg_parser():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--demo", default='nanog-50',
-                        help="Which demo to use")
+    parser.add_argument("--demo", default='nanog-50', help="Which demo to use")
     parser.add_argument("-S", "--num-samples", type=int, default=10,
                         help="Number of samples to draw from GP dynamical model")
-    parser.add_argument("-T", "--num-times", type=int, default=20,
-                        help="Number of simulation steps")
-    parser.add_argument("-E", "--num-epochs", type=int, default=5,
-                        help="Number of epochs of active learning")
-    parser.add_argument("--seed", type=int, default=123456,
-                        help="RNG seed")
+    parser.add_argument("-T", "--num-times", type=int, default=20, help="Number of simulation steps")
+    parser.add_argument("-E", "--num-epochs", type=int, default=5, help="Number of epochs of active learning")
+    parser.add_argument("--seed", type=int, default=123456, help="RNG seed")
+    parser.add_argument("--device", default='', help="Device to run on")
     return parser
 
 
