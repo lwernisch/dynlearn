@@ -19,13 +19,13 @@ import numpy as np
 #
 USE_ANT = True
 if USE_ANT:
-  ant_file = '../dynlearn/biomodels/locke-2005-circadian-clock.ant'
-  print('Loading Antimony: {}'.format(ant_file))
-  model = te.loadAntimonyModel(ant_file)
+    ant_file = '../dynlearn/biomodels/locke-2005-circadian-clock.ant'
+    print('Loading Antimony: {}'.format(ant_file))
+    model = te.loadAntimonyModel(ant_file)
 else:
-  sbml_file = '../dynlearn/biomodels/BIOMD0000000055/BIOMD0000000055_url.xml'
-  print('Loading SBML: {}'.format(sbml_file))
-  model = rr.RoadRunner(sbml_file)
+    sbml_file = '../dynlearn/biomodels/BIOMD0000000055/BIOMD0000000055_url.xml'
+    print('Loading SBML: {}'.format(sbml_file))
+    model = rr.RoadRunner(sbml_file)
 
 #
 # Simulate
@@ -38,7 +38,7 @@ result = model.simulate(0, end_time, n_steps)
 #
 # Plot
 #
-plot_file = 'cc-simulate.png'
+plot_file = 'plots/cc-simulate.png'
 print('Plotting: {}'.format(plot_file))
 fig, ax = plt.subplots()
 tod = result[:, 0]  # time of day
@@ -46,14 +46,14 @@ cmap = cm.get_cmap('tab10')
 species_color = dict(zip('LTXYP', cmap.colors))
 loc_style = dict(zip('mcn', ['-', ':', (0, (1, 4))]))
 for s in range(1, result.shape[1]):
-  species = result.colnames[s].strip('[]')
-  color = species_color[species[1]]
-  ls = loc_style[species[2]]
-  expr = result[:, s]
-  if 'cTc' == species:
-    expr /= 10  # put on same scale for plotting
-    species = 'cTc / 10'
-  ax.plot(tod, expr, label=species, color=color, linestyle=ls)
+    species = result.colnames[s].strip('[]')
+    color = species_color[species[1]]
+    ls = loc_style[species[2]]
+    expr = result[:, s]
+    if 'cTc' == species:
+        expr /= 10  # put on same scale for plotting
+        species = 'cTc / 10'
+    ax.plot(tod, expr, label=species, color=color, linestyle=ls)
 dayLength = 12  # From Antimony model
 ld = np.ceil(np.sin((np.pi * tod) / dayLength + 0.001) / 2)
 ax.plot(tod, ld, color='k', alpha=.5, label='LD')
