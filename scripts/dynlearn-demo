@@ -17,70 +17,69 @@ Script to run dynlearn demo(s).
 
 from pathlib import Path
 import pickle
+import logging
 import numpy as np
-import matplotlib.pyplot as plt
-import tensorflow as tf
-from dynlearn import demo, plot, learn as lf
+from dynlearn import demo, optimiser as opt
 
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 #
 # Uncomment below if running inside Jupyter to automagically reload changed modules and
 # fix command-line arguments
 #
-# %load_ext autoreload
+# %reload_ext autoreload
 # %autoreload 2
-# import sys; sys.argv = ['dynlearn-demo', '-E=3']  # Used when running inside Jupyter
-
+# import sys; sys.argv = [
+#     'dynlearn-demo',
+#     '--optimiser=active',
+# ]  # Used when running inside Jupyter
 
 #
 # Parse arguments
 #
 args = demo.arg_parser().parse_args()
-
-#
-# Choose a tag to distinguish these results from other results
-# with different arguments
-#
+# Choose a tag to distinguish these results from other results with different arguments
 tag = demo.tag_from_args(args)
 
 #
 # Seed RNG
 #
-print('Seeding RNG: {}'.format(args.seed))
-np.random.seed(args.seed)  # 123456 with n_samples 10 good
+logger.info('Seeding RNG: {}'.format(args.seed))
+np.random.seed(args.seed)
 
-with tf.device(args.device):
-    #
-    # Set up (configure) simulator, loss function, GP and knots
-    #
-    sim, loss, gp, knots, knot_values, plot_args = demo.setup(args)
+#
+# Output directories
+#
+results_dir = Path('results')
+results_dir.mkdir(exist_ok=True)
+plots_dir = Path('plots')
+plots_dir.mkdir(exist_ok=True)
 
-    #
-    # Optimise the inputs to minimise the given loss
-    #
-    epoch_results = lf.search_u(sim=sim, loss=loss, gp=gp,
-                                knots=knots, knot_values=knot_values,
-                                x0=np.zeros(len(sim.output_vars)),
-                                u_max_limit=1000.0, n_epochs=args.num_epochs, n_samples=args.num_samples)
-    epoch = epoch_results[3]
+#
+# Set up (configure) simulator, loss function, GP and knots
+#
+sim, loss, gp, knots, knot_values, plot_args = demo.setup(args)
+
+#
+# Optimise the inputs to minimise the given loss
+#
+results = opt.optimise(sim, loss, gp, knots, knot_values, args)
 
 #
 # Save results
 #
-results_dir = Path('results')
-results_dir.mkdir(exist_ok=True)
-results_path = results_dir / f'{tag}.dmp'
-print(f'Saving results to: {results_path}')
-pickle.dump(epoch_results, results_path.open('wb'))
+results_path = results_dir / f'{tag}-results.pkl'
+logger.info(f'Saving results to: {results_path}')
+pickle.dump(results, results_path.open('wb'))
 
 #
-# Plot results
+# Plot history
 #
-plots_dir = Path('plots')
-plots_dir.mkdir(exist_ok=True)
-plot_path = plots_dir / f'{tag}.png'
-plt.figure()
-plot.plot_sim_epochs(sim, loss, epoch_results, plot_args)
-print(f'Saving plot to: {plot_path}')
-plt.savefig(plot_path, dpi=300)
-plt.close('all')
+history = results['history']
+# TODO: this is demo specific, generalise
+history[:, 0, :] /= 10  # Scale control input as it is an order of magnitude bigger than outputs
+history_chart = opt.chart_history(sim, history)
+history_path = plots_dir / f'{tag}-epochs.png'
+logger.info(f'Saving plot to: {history_path}')
+history_chart.save(str(history_path))

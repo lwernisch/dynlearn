@@ -5,10 +5,12 @@ See :mod:`dynlearn.demo` for an example how to use this module
 """
 import tensorflow as tf
 import numpy as np
-
 import time
-
+import logging
 from dynlearn import gp_kernels as gpf
+from dynlearn import simulation
+
+logger = logging.getLogger(__name__)
 
 
 # -------    Loss classes
@@ -45,13 +47,12 @@ class RegularisedEndLoss(Loss):
         # sumsq = 0.0
         target_u_ind = self.u_dim + self.target_ind
         for rtracks in rtracks_lst:
-            if (self.target == 9999.0):
+            if self.target == 9999.0:
                 loss = - tf.square(rtracks[self.time_ind, target_u_ind])
-            elif (self.target == -9999.0):
+            elif self.target == -9999.0:
                 loss = tf.square(rtracks[self.time_ind, target_u_ind])
             else:
-                loss = tf.square(
-                    rtracks[self.time_ind, target_u_ind] - self.target)
+                loss = tf.square(rtracks[self.time_ind, target_u_ind] - self.target)
             total_loss += loss
             # sumsq += loss**2
         mean_loss = total_loss / len(rtracks_lst) + self.reg_weights * tf.reduce_sum(tf.abs(u))
@@ -95,16 +96,7 @@ class FixedGaussGP:
                 - **X_span** (*(t-1,d) np.array*): new GP inputs
                 - **Y_span** (*(t-1,m) np.array*): new GP output
         """
-        #
-        # Run the simulation
-        sim.set_inputs(tracks=u_tracks, time_inds=np.arange(u_tracks.shape[1]))
-        sim.dynamic_simulate()
-        #
-        # Wrangle the simulation output into format suitable to add to GP
-        tracks = np.vstack([sim.U, sim.X])  # sim.U, sim.X time along shape[1]
-        u_dim = sim.U.shape[0]
-        X_span = tracks[:, :-1].T  # (T-1) x input_dim input pts
-        Y_span = tracks[u_dim:, 1:].T  # (T-1) x output_dim multi output points
+        tracks, u_dim, X_span, Y_span = simulation.simulate(sim, u_tracks)
         # Calculate the output of the GP
         if is_diff:
             # The difference between consecutive time points
@@ -220,8 +212,8 @@ def search_u(sim, loss, gp, knots, knot_values, x0, u_max_limit=None,
 
     with tf.Session() as sess:
         for epoch in range(n_epochs):
-            print("Epoch {}: start with u_tracks {}".format(epoch, np.round(u_col.T[:, knots], 2)))
-            print("Epoch {}: current sim achieves {:.2f}".format(epoch, Y_span[n_steps - 1, loss.target_ind]))
+            logger.info("Epoch {}: start with u_tracks {}".format(epoch, np.round(u_col.T[:, knots], 2)))
+            logger.info("Epoch {}: current sim achieves {:.2f}".format(epoch, Y_span[n_steps - 1, loss.target_ind]))
 
             #
             # Construct TF variables for the forcing inputs
@@ -257,13 +249,13 @@ def search_u(sim, loss, gp, knots, knot_values, x0, u_max_limit=None,
             #
             # Evaluate the average loss tensor
             mean_loss_eval, u_col = sess.run([mean_loss, u_col_tf])
-            print("Epoch {}: loss {:.2f} with u_col {} in time {:.1f}s".format(
+            logger.info("Epoch {}: loss {:.2f} with u_col {} in time {:.1f}s".format(
                 epoch, mean_loss_eval, np.round(u_col.T[:, ], 2), np.round(time.time() - time0, 2)))
 
             #
             # Evaluate the system
             rtracks_lst_eval = sess.run(rtracks_lst)
-            print("Epoch {}: mean target {:.2f} of target {:.2f}".format(
+            logger.info("Epoch {}: mean target {:.2f} of target {:.2f}".format(
                 epoch, loss.mean_target(rtracks_lst_eval), loss.target))
 
             u_sim = sim.u_tracks_from_knots(sim.n_times, knots, u_col.T[0, knots]).T
@@ -271,8 +263,8 @@ def search_u(sim, loss, gp, knots, knot_values, x0, u_max_limit=None,
 
             result_lst.append([k, X_span, Y_span, u_col])
 
-            print("Epoch {}: end with u_col {}".format(epoch, np.round(u_col.T[:, knots], 2)))
-            print("Epoch {}: sim achieves {:.2f}".format(epoch, Y_span[n_steps - 1, loss.target_ind]))
+            logger.info("Epoch {}: end with u_col {}".format(epoch, np.round(u_col.T[:, knots], 2)))
+            logger.info("Epoch {}: sim achieves {:.2f}".format(epoch, Y_span[n_steps - 1, loss.target_ind]))
 
         # end for loop
     # end with

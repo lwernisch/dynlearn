@@ -360,7 +360,6 @@ def test_kernel_tf():
     min_loss = 1e15
     for _ in range(200):
         sess.run(train_op)
-        # print(sess.run([loss, z, m]))
         current_loss, current_z, current_m_tf = sess.run([loss, z, m_tf])
         if current_loss < min_loss:
             min_loss = current_loss

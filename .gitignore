@@ -2,6 +2,8 @@ scripts/th1-simulate.pdf
 scripts/cc-simulate.png
 scripts/scratch.py
 scripts/plots/
+plots/
+results/
 
 dynlearn.egg-info/
 venv3/

@@ -16,18 +16,6 @@ from GPyOpt.methods import BayesianOptimization
 from dynlearn import simulation as sf
 
 
-def simulate(knot_values):
-    uvals = \
-        sim.u_tracks_from_knots(sim.n_times, knots, knot_values).T  # uvals always col vector
-    input_tracks = uvals.T
-    sim.set_inputs(tracks=input_tracks,
-                   time_inds=np.arange(input_tracks.shape[1]))
-    sim.dynamic_simulate()
-    level = sim.X[sim.output_vars.index(name), -1]
-    print('Simulated inputs: {}, level: {:.2f}'.format(np.round(knot_values, 2), level))
-    return sim, level
-
-
 def error_so_far(simulation_history):
     """Yield the best error so far given the simulation history."""
     return accumulate(np.abs(np.array(simulation_history) - target_level), min)
@@ -49,17 +37,6 @@ def bo_f(x):
     for i in range(nrow):
         result[i] = f(x[i])
     return result
-
-
-def plot_sim(x0, filename):
-    "Plot a simulation."
-    sim, level = simulate(x0)
-    result = sim.X.T
-    fig, ax = plt.subplots()
-    for j in range(result.shape[1]):
-        ax.plot(result[:, j], label=sim.output_vars[j])
-    ax.legend()
-    fig.savefig(filename)
 
 
 plot_dir = Path('plots')
@@ -86,6 +63,7 @@ print("Maximised level of {} to {:.2f} in {} iterations using {} function evalua
     name, -res.fun, res.nit, res.nfev))
 print('Optimal inputs: {}'.format(np.round(res.x, 2)))
 plot_sim(res.x, plot_dir / 'scipy-opt.pdf')
+scipy_targets = pd.Series(simulation_history, name='scipy_target')
 scipy_errors = pd.Series(error_so_far(simulation_history))
 
 #
@@ -104,6 +82,7 @@ dir(my_opt)
 my_opt.get_evaluations()[0].shape
 my_opt.get_evaluations()[1]
 plot_sim(my_opt.x_opt, plot_dir / 'bayes-opt.pdf')
+bo_targets = pd.Series(simulation_history, name='Bayesian_target')
 bo_errors = pd.Series(error_so_far(simulation_history))
 
 results = pd.DataFrame(data=dict(scipy=scipy_errors, Bayesian=bo_errors))

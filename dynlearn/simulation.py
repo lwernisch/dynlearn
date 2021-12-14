@@ -26,9 +26,12 @@ Example:
 
 from abc import abstractmethod
 import matplotlib.pyplot as plt
+import logging
 import numpy as np
 import tellurium as te  # ignore plot error messages
 from dynlearn import get_file_name
+
+logger = logging.getLogger(__name__)
 
 
 class Simulation:
@@ -46,6 +49,11 @@ class Simulation:
             U[knots[k]:knots[k + 1]] = knot_values[k]
         U[knots[-1]:] = knot_values[-1]
         return np.reshape(U, (1, -1))
+
+    @property
+    def tracks(self):
+        """self.U, self.X stacked"""
+        return np.vstack([self.U, self.X])
 
     @abstractmethod
     def u_tracks_from_knots(self, knots, knot_values):
@@ -185,7 +193,7 @@ class ContinuousSimulation(Simulation):
 
     def dynamic_simulate(self):
         if self.model_str is None:
-            print("Error simulation: Model definition missing")
+            logging.error("Error simulation: Model definition missing")
             return None
         self.loada_str = self.preamble_str + self.model_str + self.input_str
         self.r = te.loada(self.loada_str)
@@ -344,10 +352,26 @@ def demo():
     res = scipy.optimize.minimize(knot_fct, x0=x0,
                                   args=(knots, sim, 'Protein'),
                                   method="Powell")
-    print(res.x)
-    print("maximised level of", target_name, "to", -res.fun)
+    logging.info(res.x)
+    logging.info("Maximised level of %s to %f", target_name, -res.fun)
     plt.clf()
     result = sim.X.T
     for j in range(result.shape[1]):
         plt.plot(result[:, j], label=sim3.output_vars[j])
     plt.legend()
+
+
+def simulate(sim, u_tracks):
+    """Run the simulation and wrangle the output into a format suitable for processing by a GP."""
+    #
+    # Run the simulation
+    sim.set_inputs(tracks=u_tracks, time_inds=np.arange(u_tracks.shape[1]))
+    sim.dynamic_simulate()
+    #
+    # Wrangle the simulation output into format suitable to add to GP
+    tracks = sim.tracks
+    u_dim = sim.U.shape[0]
+    X_span = tracks[:, :-1].T  # (T-1) x input_dim input pts
+    Y_span = tracks[u_dim:, 1:].T  # (T-1) x output_dim multi output points
+    return tracks, u_dim, X_span, Y_span
+
