@@ -15,6 +15,7 @@ logger = logging.getLogger(__name__)
 
 
 def min_so_far(iterable):
+    """Cumulative minimum."""
     smallest = None
     for x in iterable:
         if smallest is None or x < smallest:

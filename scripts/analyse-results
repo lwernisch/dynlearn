@@ -5,6 +5,7 @@
 from pathlib import Path
 import re
 import pickle
+import numpy as np
 import pandas as pd
 import altair as alt
 from dynlearn import demo, optimiser as opt
@@ -13,10 +14,10 @@ RESULTS_RE = re.compile('(.+)-results')
 
 
 results_dir = Path('results')
-result_paths = [results_dir / 'nanog50-active-10-20-5-123456-1000-results.pkl',
+result_paths = [results_dir / 'nanog50-random-10-20-40-123456-1000-results.pkl',
+                results_dir / 'nanog50-Powell-10-20-30-123456-1000-results.pkl',
                 results_dir / 'nanog50-Bayesian-10-20-20-123456-1000-results.pkl',
-                results_dir / 'nanog50-Powell-10-20-40-123456-1000-results.pkl',
-                results_dir / 'nanog50-random-10-20-20-123456-1000-results.pkl',]
+                results_dir / 'nanog50-active-10-20-5-123456-1000-results.pkl', ]
 
 _losses = dict()
 for result_path in result_paths:
@@ -31,22 +32,25 @@ for result_path in result_paths:
     _losses[f'{args.optimiser}_raw'] = pd.Series(losses_raw)
     _losses[args.optimiser] = pd.Series(losses_best)
 losses = pd.DataFrame(_losses)
-losses.index.name = 'time_step'
+losses.index.name = 'experiments'
 losses = losses.reset_index()
 losses
 losses.columns
 
 # Melt losses to make chart
-losses_m = (
+losses_chart = (
     losses
     .loc[:, ~ losses.columns.str.endswith('_raw')]
-    .melt(id_vars='time_step', var_name='optimiser', value_name='loss'))
+    .melt(id_vars='experiments', var_name='optimiser', value_name='loss')
+    .query('experiments <= 18'))
 
 # Make chart
 loss_chart = (
-    alt.Chart(losses_m)
+    alt.Chart(losses_chart)
     .mark_line(clip=True)
-    .encode(x='time_step:O',
+    .encode(x=alt.X('experiments:O'),
             y=alt.Y('loss:Q', scale=alt.Scale(domain=(0, 200))),
-            color='optimiser:N'))
-loss_chart.save('plots/optimiser-losses.png')
+            color='optimiser:N')
+    .properties(width=300, height=200))
+# loss_chart.save('plots/optimiser-losses.png', scale_factor=10.)
+loss_chart.save('plots/optimiser-losses.svg')
