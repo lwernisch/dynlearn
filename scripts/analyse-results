@@ -31,6 +31,7 @@ for result_path in result_paths:
     losses_best = list(opt.min_so_far(losses_raw))
     _losses[f'{args.optimiser}_raw'] = pd.Series(losses_raw)
     _losses[args.optimiser] = pd.Series(losses_best)
+
 losses = pd.DataFrame(_losses)
 losses.index.name = 'experiments'
 losses = losses.reset_index()
