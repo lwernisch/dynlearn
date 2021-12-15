@@ -9,6 +9,9 @@ dependencies:
   # System
   - python==3.7.12
   - pip>=21.3.1
+  - flake8>=4.0.1
+  - pep8>=1.7.1
+  - autopep8>=1.6.0
   - jupyter>=1.0.0
   - bumpversion>=0.5.3
 

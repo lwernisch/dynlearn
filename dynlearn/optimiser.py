@@ -14,6 +14,14 @@ import tensorflow as tf
 logger = logging.getLogger(__name__)
 
 
+def min_so_far(iterable):
+    smallest = None
+    for x in iterable:
+        if smallest is None or x < smallest:
+            smallest = x
+        yield smallest
+
+
 class OptimisationTarget:
     """A function object that can be the target of an optimiser.
 
@@ -98,9 +106,11 @@ def optimise_random(sim, loss_fn, knots, args):
     target = OptimisationTarget(sim, loss_fn, knots)
 
     best, best_loss = None, np.inf
+    losses = []
     for epoch in range(args.num_epochs):
         knot_values = np.random.uniform(low=0, high=args.u_max, size=len(knots))
         loss = target(knot_values)
+        losses.append(losses)
         if loss < best_loss:
             best = knot_values
             best_loss = loss
@@ -108,11 +118,11 @@ def optimise_random(sim, loss_fn, knots, args):
     logger.info("Minimised loss to {:.2f} using {} function evaluations".format(best_loss, args.num_epochs))
     logger.info('Optimal inputs: {}'.format(np.round(best, 2)))
 
-    return dict(target=target, history=target.history, best_u=best)
+    return dict(target=target, history=target.history, best_u=best, losses=losses)
 
 
 def optimise_powell(sim, loss_fn, knots, knot_values, args):
-    """Use Powell optimiser to control system."""
+    """Use scipy Powell optimiser to control system."""
     import scipy
 
     # Define target function of optimiser
@@ -127,7 +137,7 @@ def optimise_powell(sim, loss_fn, knots, knot_values, args):
         res.fun, res.nit, res.nfev))
     logger.info('Optimal inputs: {}'.format(np.round(res.x, 2)))
 
-    return dict(target=target, history=target.history, best_u=res.x)
+    return dict(target=target, history=target.history, best_u=res.x, losses=target.losses)
 
 
 # TODO: check whether we should use knot_values like other optimisers
@@ -153,7 +163,7 @@ def optimise_bayesian(sim, loss_fn, knots, args):
     assert len(optimiser.get_evaluations()[1]) == len(target.history)
     logger.info('Optimal inputs: {}'.format(np.round(optimiser.x_opt, 2)))
 
-    return dict(target=target, history=target.history, best_u=optimiser.x_opt)
+    return dict(target=target, history=target.history, best_u=optimiser.x_opt, losses=target.losses)
 
 
 def optimise_active(sim, loss_fn, gp, knots, knot_values, args):
@@ -169,14 +179,10 @@ def optimise_active(sim, loss_fn, gp, knots, knot_values, args):
                                 u_max_limit=args.u_max, n_epochs=args.num_epochs, n_samples=args.num_samples)
 
 
-    def tracks_for_u(u_tracks):
-        sim.set_inputs(tracks=u_tracks.T, time_inds=np.arange(u_tracks.shape[0]))
-        sim.dynamic_simulate()
-        return sim.tracks
-
     # Wrangle results into same format as other optimisers and return
-    history = np.asarray(list(map(tracks_for_u, map(op.itemgetter('u'), epoch_results))))
-    return dict(epoch_results=epoch_results, history=history)
+    history = np.asarray(list(map(sim.tracks_for_u, map(op.itemgetter('u'), epoch_results))))
+    losses = list(map(op.itemgetter('actual_loss'), epoch_results))
+    return dict(epoch_results=epoch_results, history=history, losses=losses)
 
 
 def optimise(sim, loss_fn, gp, knots, knot_values, args):

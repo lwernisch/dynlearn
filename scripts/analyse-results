@@ -12,14 +12,6 @@ from dynlearn import demo, optimiser as opt
 RESULTS_RE = re.compile('(.+)-results')
 
 
-def min_so_far(iterable):
-    smallest = None
-    for x in iterable:
-        if smallest is None or x < smallest:
-            smallest = x
-        yield smallest
-
-
 results_dir = Path('results')
 result_paths = [results_dir / 'nanog50-active-10-20-5-123456-1000-results.pkl',
                 results_dir / 'nanog50-Bayesian-10-20-20-123456-1000-results.pkl',
@@ -35,13 +27,14 @@ for result_path in result_paths:
     sim, loss_fn, gp, knots, knot_values, plot_args = demo.setup(args)
     target = opt.OptimisationTarget(sim, loss_fn, knots)
     losses_raw = [target.loss_from_tracks(tracks) for tracks in results['history']]
-    losses_best = list(min_so_far(losses_raw))
+    losses_best = list(opt.min_so_far(losses_raw))
     _losses[f'{args.optimiser}_raw'] = pd.Series(losses_raw)
     _losses[args.optimiser] = pd.Series(losses_best)
 losses = pd.DataFrame(_losses)
 losses.index.name = 'time_step'
 losses = losses.reset_index()
 losses
+losses.columns
 
 # Melt losses to make chart
 losses_m = (

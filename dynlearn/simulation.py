@@ -36,6 +36,7 @@ logger = logging.getLogger(__name__)
 
 class Simulation:
     """Generic simulation class"""
+
     @staticmethod
     def pulse_u_tracks(n_times, knots, knot_values):
         U = np.zeros(n_times)
@@ -54,6 +55,12 @@ class Simulation:
     def tracks(self):
         """self.U, self.X stacked"""
         return np.vstack([self.U, self.X])
+
+    def tracks_for_u(self, u_tracks):
+        """The tracks resulting from the forcing control input."""
+        self.set_inputs(tracks=u_tracks.T, time_inds=np.arange(u_tracks.shape[0]))
+        self.dynamic_simulate()
+        return self.tracks
 
     @abstractmethod
     def u_tracks_from_knots(self, knots, knot_values):
