@@ -17,10 +17,10 @@ logger = logging.getLogger(__name__)
 
 class Loss:
     """Generic loss class"""
-    def mean_loss(self, rtracks_lst, u):
+    def mean_loss(self, rtracks, u):
         pass
 
-    def mean_target(self, rtracks_lst_eval):
+    def mean_target(self, rtracks_eval):
         pass
 
 
@@ -59,11 +59,11 @@ class RegularisedEndLoss(Loss):
         # sd_loss = tf.sqrt(sumsq/n_lst - mean_loss**2)
         return mean_loss  # - 2.0*sd_loss
 
-    def mean_target(self, rtracks_lst_eval):
-        total_loss = 0
-        for rtracks in rtracks_lst_eval:
-            total_loss += rtracks[self.time_ind, self.u_dim + self.target_ind]
-        return total_loss / len(rtracks_lst_eval)
+    def mean_target(self, rtracks_lst):
+        total = 0
+        for rtracks in rtracks_lst:
+            total += rtracks[self.time_ind, self.u_dim + self.target_ind]
+        return total / len(rtracks_lst)
 
 
 # ------- Kernel classes
@@ -193,52 +193,63 @@ def search_u(sim, loss, gp, knots, knot_values, x0, u_max_limit=None,
         n_samples (int): number of random realisations from the GP recursion
 
     Returns:
-        A list with one item per epoch. The item contains
+        A list with one dictionary per epoch. The item contains
 
             - the output of `FixedGaussGP.kernel_for_u` for the experiment
             - `X_span`
             - `Y_span`
             - **u_col** (*np.array*): the forcing inputs for the experiment
+            - the mean target level
+            - the mean loss
 
     """
     #
     # Calculate the values of u across all time points from the knots and their values
     u_col = sim.u_tracks_from_knots(sim.n_times, knots, knot_values).T
-    #
-    # Run the simulation and update the GP with new data
-    k, X_span, Y_span = gp.kernel_for_u(u_tracks=u_col.T, sim=sim)
+    # How many input, output pairs do we have to train the GP?
     n_steps = u_col.shape[0] - 1
-    result_lst = [[k, X_span, Y_span, u_col]]
+    # We have no kernel to start with
+    k = None
 
     with tf.Session() as sess:
+        #
+        # Construct TF variables for the forcing inputs
+        u_col_tf = make_u_col_tf(u_col=u_col, trainable_inds=knots,
+                                 u_type=sim.u_type,
+                                 u_max_limit=u_max_limit)
+
+        #
+        # TODO: Not sure we need/should reinitialise every epoch. Is there a reason
+        # this is here?
+        #
+        # Looks like we should run this every time. See:
+        # https://stackoverflow.com/a/44434099/959926
+        sess.run(tf.global_variables_initializer())
+
+        results = []
         for epoch in range(n_epochs):
+            #
+            # Run the simulation and update the GP with new data
+            k, X_span, Y_span = gp.kernel_for_u(u_tracks=u_col.T, sim=sim, k=k)
+
             logger.info("Epoch {}: start with u_tracks {}".format(epoch, np.round(u_col.T[:, knots], 2)))
             logger.info("Epoch {}: current sim achieves {:.2f}".format(epoch, Y_span[n_steps - 1, loss.target_ind]))
 
             #
-            # Construct TF variables for the forcing inputs
-            u_col_tf = make_u_col_tf(u_col=u_col, trainable_inds=knots,
-                                     u_type=sim.u_type,
-                                     u_max_limit=u_max_limit)
-            #
-            # TODO: Not sure we need/should reinitialise every epoch. Is there a reason
-            # this is here?
-            sess.run(tf.global_variables_initializer())
-
-            #
             # Construct a TensorFlow computation graph to
             # run n_samples through the system defined by the GP
-            rtracks_lst = []
+            rtracks = []
             for i in range(n_samples):
-                rtracks_lst.append(k.tf_recursive(u_col_tf=u_col_tf, x0=x0,
-                                                  is_epsilon=True,
-                                                  is_random=True,
-                                                  is_nonnegative=True))
+                rtracks.append(k.tf_recursive(u_col_tf=u_col_tf, x0=x0,
+                                              is_epsilon=True,
+                                              is_random=True,
+                                              is_nonnegative=True))
 
             #
             # Construct a TensorFlow computation graph to
             # average loss over samples
-            mean_loss = loss.mean_loss(rtracks_lst, u_col_tf)
+            mean_loss = loss.mean_loss(rtracks, u_col_tf)
+            mean_target = loss.mean_target(rtracks)
 
             #
             # Minimise the loss using scipy optimizer
@@ -247,21 +258,16 @@ def search_u(sim, loss, gp, knots, knot_values, x0, u_max_limit=None,
             optimizer.minimize(sess)
 
             #
-            # Evaluate the average loss tensor
-            mean_loss_eval, u_col = sess.run([mean_loss, u_col_tf])
+            # Evaluate the system
+            mean_loss_eval, mean_target_eval, u_col, rtracks_eval = sess.run([mean_loss, mean_target, u_col_tf, rtracks])
             logger.info("Epoch {}: loss {:.2f} with u_col {} in time {:.1f}s".format(
                 epoch, mean_loss_eval, np.round(u_col.T[:, ], 2), np.round(time.time() - time0, 2)))
+            logger.info("Epoch {}: mean target {:.2f} of target {:.2f}".format(
+                epoch, mean_target_eval, loss.target))
 
             #
-            # Evaluate the system
-            rtracks_lst_eval = sess.run(rtracks_lst)
-            logger.info("Epoch {}: mean target {:.2f} of target {:.2f}".format(
-                epoch, loss.mean_target(rtracks_lst_eval), loss.target))
-
-            u_sim = sim.u_tracks_from_knots(sim.n_times, knots, u_col.T[0, knots]).T
-            k, X_span, Y_span = gp.kernel_for_u(u_tracks=u_sim.T, sim=sim, k=k)
-
-            result_lst.append([k, X_span, Y_span, u_col])
+            # Store epoch results
+            results.append(dict(k=k, X=X_span, y=Y_span, u=u_col, loss=mean_loss_eval))
 
             logger.info("Epoch {}: end with u_col {}".format(epoch, np.round(u_col.T[:, knots], 2)))
             logger.info("Epoch {}: sim achieves {:.2f}".format(epoch, Y_span[n_steps - 1, loss.target_ind]))
@@ -269,4 +275,4 @@ def search_u(sim, loss, gp, knots, knot_values, x0, u_max_limit=None,
         # end for loop
     # end with
 
-    return result_lst
+    return results

@@ -7,13 +7,14 @@ level for a target species at a specified time point.
 
 import numpy as np
 import argparse
+from collections import namedtuple
 from dynlearn import simulation as sf, learn as lf
 
 
 def setup(args):
-    if 'nanog-50' == args.demo:
+    if 'nanog50' == args.demo:
         return nanog_target(args=args)
-    if 'ffl-780' == args.demo:
+    if 'ffl780' == args.demo:
         return ffl_target(args=args)
     else:
         raise ValueError('Unknown demo: {}'.format(args.demo))
@@ -21,7 +22,7 @@ def setup(args):
 
 def arg_parser():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--demo', default='nanog-50', help='Which demo to use')
+    parser.add_argument('--demo', default='nanog50', help='Which demo to use')
     parser.add_argument('-S', '--num-samples', type=int, default=10,
                         help='Number of samples to draw from GP dynamical model')
     parser.add_argument('-T', '--num-times', type=int, default=20, help='Number of simulation steps')
@@ -29,7 +30,7 @@ def arg_parser():
     parser.add_argument('--u-max', type=float, default=1000, help='Maximum value for control inputs')
     parser.add_argument('--seed', type=int, default=123456, help='RNG seed')
     parser.add_argument('--device', default='', help='Device to run on')
-    parser.add_argument('--optimiser', default='active', choices=('active', 'Bayesian', 'Powell'),
+    parser.add_argument('--optimiser', default='active', choices=('active', 'Bayesian', 'Powell', 'random'),
                         help='Optimiser to run')
     return parser
 
@@ -39,16 +40,20 @@ def tag_from_args(args):
     return f'{args.demo}-{args.optimiser}-{args.num_samples}-{args.num_times}-{args.num_epochs}-{args.seed}-{args.u_max}'
 
 
+_ArgsDuckType = namedtuple('_ArgsDuckType',
+                           ['demo', 'optimiser', 'num_samples', 'num_times', 'num_epochs', 'seed', 'u_max'])
+
+
 def args_from_tag(tag):
     "Reconstruct the arguments from a tag."
     split = tag.split('-')
-    return dict(demo=split[0],
-                optimiser=split[1],
-                num_samples=int(split[2]),
-                num_times=int(split[3]),
-                num_epochs=int(split[4]),
-                seed=int(split[5]),
-                u_max=float(split[6]))
+    return _ArgsDuckType(demo=split[0],
+                         optimiser=split[1],
+                         num_samples=int(split[2]),
+                         num_times=int(split[3]),
+                         num_epochs=int(split[4]),
+                         seed=int(split[5]),
+                         u_max=float(split[6]))
 
 
 def ffl_target(args):

@@ -28,12 +28,16 @@ logger = logging.getLogger(__name__)
 # Uncomment below if running inside Jupyter to automagically reload changed modules and
 # fix command-line arguments
 #
-# %reload_ext autoreload
-# %autoreload 2
-# import sys; sys.argv = [
-#     'dynlearn-demo',
-#     '--optimiser=active',
-# ]  # Used when running inside Jupyter
+
+%reload_ext autoreload
+%autoreload 2
+import sys; sys.argv = [
+    'dynlearn-demo',
+    # '-E=35',
+    # '--optimiser=Powell',
+    '-E=5',
+    '--optimiser=active',
+]  # Used when running inside Jupyter
 
 #
 # Parse arguments

@@ -1,0 +1,59 @@
+#!/usr/bin/env python
+
+"""Analyse the results of a demo."""
+
+from pathlib import Path
+import re
+import pickle
+import pandas as pd
+import altair as alt
+from dynlearn import demo, optimiser as opt
+
+RESULTS_RE = re.compile('(.+)-results')
+
+
+def min_so_far(iterable):
+    smallest = None
+    for x in iterable:
+        if smallest is None or x < smallest:
+            smallest = x
+        yield smallest
+
+
+results_dir = Path('results')
+result_paths = [results_dir / 'nanog50-active-10-20-5-123456-1000-results.pkl',
+                results_dir / 'nanog50-Bayesian-10-20-20-123456-1000-results.pkl',
+                results_dir / 'nanog50-Powell-10-20-40-123456-1000-results.pkl',
+                results_dir / 'nanog50-random-10-20-20-123456-1000-results.pkl',]
+
+_losses = dict()
+for result_path in result_paths:
+    results = pickle.load(result_path.open('rb'))
+    tag = RESULTS_RE.match(result_path.with_suffix('').name).group(1)
+    args = demo.args_from_tag(tag)
+    results.keys()
+    sim, loss_fn, gp, knots, knot_values, plot_args = demo.setup(args)
+    target = opt.OptimisationTarget(sim, loss_fn, knots)
+    losses_raw = [target.loss_from_tracks(tracks) for tracks in results['history']]
+    losses_best = list(min_so_far(losses_raw))
+    _losses[f'{args.optimiser}_raw'] = pd.Series(losses_raw)
+    _losses[args.optimiser] = pd.Series(losses_best)
+losses = pd.DataFrame(_losses)
+losses.index.name = 'time_step'
+losses = losses.reset_index()
+losses
+
+# Melt losses to make chart
+losses_m = (
+    losses
+    .loc[:, ~ losses.columns.str.endswith('_raw')]
+    .melt(id_vars='time_step', var_name='optimiser', value_name='loss'))
+
+# Make chart
+loss_chart = (
+    alt.Chart(losses_m)
+    .mark_line(clip=True)
+    .encode(x='time_step:O',
+            y=alt.Y('loss:Q', scale=alt.Scale(domain=(0, 200))),
+            color='optimiser:N'))
+loss_chart.save('plots/optimiser-losses.png')

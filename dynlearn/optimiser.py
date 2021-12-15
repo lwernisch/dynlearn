@@ -5,6 +5,7 @@ with other optimisers such as Bayesian optimisation and Powell's method."""
 
 import logging
 import itertools
+import operator as op
 import numpy as np
 import pandas as pd
 import altair as alt
@@ -14,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 
 class OptimisationTarget:
-    """A function that can be the target of an optimiser.
+    """A function object that can be the target of an optimiser.
 
     Records function evaluations and associated simulations.
     """
@@ -31,28 +32,38 @@ class OptimisationTarget:
     def history(self):
         return np.asarray(self._history)
 
-    def __call__(self, knot_values):
-        """The function to minimise.
-        """
-        # Configure input, sometimes this is given with extra dimensions of size 1
+    @staticmethod
+    def _squeeze_knot_values(knot_values):
+        """Sometimes knot values are supplied with extra leading dimensions of size 1, so squeeze these out."""
         while knot_values.ndim > 1:
             knot_values = np.squeeze(knot_values, axis=0)
+        return knot_values
+
+    def __call__(self, knot_values):
+        """The function to minimise."""
+
+        # Convert knot values to u tracks
+        knot_values = OptimisationTarget._squeeze_knot_values(knot_values)
         self.knot_values.append(np.array(knot_values))
-        input_tracks = self.sim.u_tracks_from_knots(self.sim.n_times, knots=self.knots, knot_values=knot_values)
-        self.sim.set_inputs(tracks=input_tracks, time_inds=np.arange(input_tracks.shape[1]))
+        u_tracks = self.sim.u_tracks_from_knots(self.sim.n_times, knots=self.knots, knot_values=knot_values)
 
         # Simulate
+        self.sim.set_inputs(tracks=u_tracks, time_inds=np.arange(u_tracks.shape[1]))
         self.sim.dynamic_simulate()
 
         # Remember simulation history
         tracks = self.sim.tracks
         self._history.append(tracks)
 
-        # Calculate loss as function of simulation
-        with tf.Session().as_default():
-            loss = self.loss_fn.mean_loss(tracks.T[np.newaxis], self.sim.U.T).eval()
+        # Calculate loss
+        loss = self.loss_from_tracks(tracks)
         self.losses.append(loss)
         return loss
+
+    def loss_from_tracks(self, tracks):
+        # Calculate loss as function of simulation output
+        with tf.Session().as_default():
+            return self.loss_fn.mean_loss(tracks.T[np.newaxis], tracks[:self.loss_fn.u_dim].T).eval()
 
 
 def chart_history(sim, history, max_epochs=12):
@@ -80,12 +91,32 @@ def chart_history(sim, history, max_epochs=12):
     return chart
 
 
-def optimise_powell(sim, loss, knots, knot_values, args):
+def optimise_random(sim, loss_fn, knots, args):
+    """Use random sampling to control system."""
+
+    # Define target function of optimiser
+    target = OptimisationTarget(sim, loss_fn, knots)
+
+    best, best_loss = None, np.inf
+    for epoch in range(args.num_epochs):
+        knot_values = np.random.uniform(low=0, high=args.u_max, size=len(knots))
+        loss = target(knot_values)
+        if loss < best_loss:
+            best = knot_values
+            best_loss = loss
+
+    logger.info("Minimised loss to {:.2f} using {} function evaluations".format(best_loss, args.num_epochs))
+    logger.info('Optimal inputs: {}'.format(np.round(best, 2)))
+
+    return dict(target=target, history=target.history, best_u=best)
+
+
+def optimise_powell(sim, loss_fn, knots, knot_values, args):
     """Use Powell optimiser to control system."""
     import scipy
 
     # Define target function of optimiser
-    target = OptimisationTarget(sim, loss, knots)
+    target = OptimisationTarget(sim, loss_fn, knots)
 
     # Optimise with scipy's Powell method
     res = scipy.optimize.minimize(target, x0=knot_values, method="Powell", options=dict(maxfev=args.num_epochs),
@@ -93,20 +124,20 @@ def optimise_powell(sim, loss, knots, knot_values, args):
     assert res.nfev >= args.num_epochs
     logger.info(res.message)
     logger.info("Minimised loss to {:.2f} in {} iterations using {} function evaluations".format(
-        -res.fun, res.nit, res.nfev))
+        res.fun, res.nit, res.nfev))
     logger.info('Optimal inputs: {}'.format(np.round(res.x, 2)))
 
     return dict(target=target, history=target.history, best_u=res.x)
 
 
 # TODO: check whether we should use knot_values like other optimisers
-def optimise_bayesian(sim, loss, knots, args):
+def optimise_bayesian(sim, loss_fn, knots, args):
     """Use Bayesian optimisation to control system."""
     import GPy
     from GPyOpt.methods import BayesianOptimization
 
     # Define target function of optimiser
-    target = OptimisationTarget(sim, loss, knots)
+    target = OptimisationTarget(sim, loss_fn, knots)
 
     # Domain over which we will optimise
     domain = [{'name': 'knot_values', 'type': 'continuous', 'domain': (0, args.u_max), 'dimensionality': len(knots)}]
@@ -125,34 +156,44 @@ def optimise_bayesian(sim, loss, knots, args):
     return dict(target=target, history=target.history, best_u=optimiser.x_opt)
 
 
-def optimise_active(sim, loss, gp, knots, knot_values, args):
+def optimise_active(sim, loss_fn, gp, knots, knot_values, args):
     """Optimise using active learning of Gaussian process dynamical system."""
 
     from dynlearn import learn as lf
 
     # TODO: check x0 used similarly in other optimisers
     x0 = np.zeros(len(sim.output_vars))
-    epoch_results = lf.search_u(sim=sim, loss=loss, gp=gp,
+    epoch_results = lf.search_u(sim=sim, loss=loss_fn, gp=gp,
                                 knots=knots, knot_values=knot_values,
                                 x0=x0,
                                 u_max_limit=args.u_max, n_epochs=args.num_epochs, n_samples=args.num_samples)
 
+
+    def tracks_for_u(u_tracks):
+        sim.set_inputs(tracks=u_tracks.T, time_inds=np.arange(u_tracks.shape[0]))
+        sim.dynamic_simulate()
+        return sim.tracks
+
     # Wrangle results into same format as other optimisers and return
-    history = np.asarray([epoch[1].T for epoch in epoch_results])
+    history = np.asarray(list(map(tracks_for_u, map(op.itemgetter('u'), epoch_results))))
     return dict(epoch_results=epoch_results, history=history)
 
 
-def optimise(sim, loss, gp, knots, knot_values, args):
+def optimise(sim, loss_fn, gp, knots, knot_values, args):
+    """Dispatch optimisation to an optimiser as configured in `args`."""
     # TODO: let each optimiser return best knot values
     # TODO: check knot values are handled consistently across optimisers
+    if 'random' == args.optimiser:
+        return optimise_random(sim, loss_fn, knots, args)
+
     if 'active' == args.optimiser:
-        return optimise_active(sim, loss, gp, knots, knot_values, args)
+        return optimise_active(sim, loss_fn, gp, knots, knot_values, args)
 
     elif 'Bayesian' == args.optimiser:
-        return optimise_bayesian(sim, loss, knots, args)
+        return optimise_bayesian(sim, loss_fn, knots, args)
 
     elif 'Powell' == args.optimiser:
-        return optimise_powell(sim, loss, knots, knot_values, args)
+        return optimise_powell(sim, loss_fn, knots, knot_values, args)
 
     else:
         raise ValueError(f'Unknown optimiser: {args.optimiser}')
