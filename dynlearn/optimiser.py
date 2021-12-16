@@ -100,7 +100,7 @@ def chart_history(sim, history, max_epochs=12):
     return chart
 
 
-def optimise_random(sim, loss_fn, knots, args):
+def optimise_random(sim, loss_fn, knots, knot_values, args):
     """Use random sampling to control system."""
 
     # Define target function of optimiser
@@ -109,12 +109,12 @@ def optimise_random(sim, loss_fn, knots, args):
     best, best_loss = None, np.inf
     losses = []
     for epoch in range(args.num_epochs):
-        knot_values = np.random.uniform(low=0, high=args.u_max, size=len(knots))
         loss = target(knot_values)
         losses.append(losses)
         if loss < best_loss:
             best = knot_values
             best_loss = loss
+        knot_values = np.random.uniform(low=0, high=args.u_max, size=len(knots))
 
     logger.info('Minimised loss to {:.2f} using {} function evaluations'.format(best_loss, args.num_epochs))
     logger.info('Optimal inputs: {}'.format(np.round(best, 2)))
@@ -198,7 +198,7 @@ def optimise(sim, loss_fn, gp, knots, knot_values, args):
     # TODO: let each optimiser return best knot values
     # TODO: check knot values are handled consistently across optimisers
     if 'random' == args.optimiser:
-        return optimise_random(sim, loss_fn, knots, args)
+        return optimise_random(sim, loss_fn, knots, knot_values, args)
 
     if 'active' == args.optimiser:
         return optimise_active(sim, loss_fn, gp, knots, knot_values, args)
