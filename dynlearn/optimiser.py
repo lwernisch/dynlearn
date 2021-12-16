@@ -155,8 +155,8 @@ def optimise_bayesian(sim, loss_fn, knots, knot_values, args):
 
     # Define Gaussian process to model loss and optimiser
     kernel = GPy.kern.Matern52(input_dim=len(knots), variance=2**2, lengthscale=args.u_max / 3)
-    optimiser = BayesianOptimization(f=target, X=knot_values, domain=domain, kernel=kernel, noise_var=.05**2,
-                                     maximize=False)
+    optimiser = BayesianOptimization(f=target, X=knot_values[np.newaxis], domain=domain, kernel=kernel,
+                                     noise_var=.05**2, maximize=False)
 
     # Optimise
     optimiser.run_optimization(max_iter=args.num_epochs)

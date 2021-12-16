@@ -1,7 +1,9 @@
 #!/bin/bash -ex
 
-SEED=123456
-scripts/dynlearn-demo --seed $SEED --num-epochs 40 --optimiser random
-scripts/dynlearn-demo --seed $SEED --num-epochs 30 --optimiser Powell
-scripts/dynlearn-demo --seed $SEED --num-epochs 20 --optimiser Bayesian
-scripts/dynlearn-demo --seed $SEED --num-epochs  5 --optimiser active
+for SEED in 37 38 39 40 41
+do
+  scripts/dynlearn-demo --seed $SEED --num-epochs 40 random
+  scripts/dynlearn-demo --seed $SEED --num-epochs 30 Bayesian
+  scripts/dynlearn-demo --seed $SEED --num-epochs 20 Powell
+  scripts/dynlearn-demo --seed $SEED --num-epochs 10 active
+done

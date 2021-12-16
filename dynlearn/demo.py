@@ -31,8 +31,6 @@ def arg_parser():
     parser.add_argument('--u-max', type=float, default=1000, help='Maximum value for control inputs')
     parser.add_argument('--seed', type=int, default=123456, help='RNG seed')
     parser.add_argument('--device', default='', help='Device to run on')
-    parser.add_argument('--optimiser', default='active', choices=('active', 'Bayesian', 'Powell', 'random'),
-                        help='Optimiser to run')
 
     subparsers = parser.add_subparsers(help='optimiser to run')
 
@@ -63,11 +61,11 @@ def arg_parser():
     parser_active.add_argument('--diag-epsilon', type=float, default=1e-3, help='Diagonal stabiliser for covariance')
 
     # Powell
-    parser_powell = subparsers.add_parser('powell', help='Use Powell optimisation')
+    parser_powell = subparsers.add_parser('Powell', help='Use Powell optimisation')
     parser_powell.set_defaults(optimiser='Powell')
 
     # Bayesian optimisation
-    parser_bayesian = subparsers.add_parser('bayesian', help='Use bayesian optimisation')
+    parser_bayesian = subparsers.add_parser('Bayesian', help='Use bayesian optimisation')
     parser_bayesian.set_defaults(optimiser='Bayesian')
 
     return parser
@@ -75,11 +73,10 @@ def arg_parser():
 
 def tag_from_args(args):
     "Construct a string that represents the arguments."
-    return f'{args.demo}-{args.optimiser}-{args.num_samples}-{args.num_times}-{args.num_epochs}-{args.seed}-{args.u_max}'
+    return f'{args.demo}-{args.optimiser}-{args.num_times}-{args.num_epochs}-{args.seed}-{args.u_max}'
 
 
-_ArgsDuckType = namedtuple('_ArgsDuckType',
-                           ['demo', 'optimiser', 'num_samples', 'num_times', 'num_epochs', 'seed', 'u_max'])
+_ArgsDuckType = namedtuple('_ArgsDuckType', ['demo', 'optimiser', 'num_times', 'num_epochs', 'seed', 'u_max'])
 
 
 def args_from_tag(tag):
@@ -87,11 +84,10 @@ def args_from_tag(tag):
     split = tag.split('-')
     return _ArgsDuckType(demo=split[0],
                          optimiser=split[1],
-                         num_samples=int(split[2]),
-                         num_times=int(split[3]),
-                         num_epochs=int(split[4]),
-                         seed=int(split[5]),
-                         u_max=float(split[6]))
+                         num_times=int(split[2]),
+                         num_epochs=int(split[3]),
+                         seed=int(split[4]),
+                         u_max=float(split[5]))
 
 
 def ffl_target(args):
