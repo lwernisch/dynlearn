@@ -5,53 +5,72 @@
 from pathlib import Path
 import re
 import pickle
+import logging
 import numpy as np
 import pandas as pd
 import altair as alt
 from dynlearn import demo, optimiser as opt
 
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 RESULTS_RE = re.compile('(.+)-results')
 
+plots_dir = Path('plots')
 
+seeds = [37]
 results_dir = Path('results')
-result_paths = [results_dir / 'nanog50-random-10-20-40-123456-1000-results.pkl',
-                results_dir / 'nanog50-Powell-10-20-30-123456-1000-results.pkl',
-                results_dir / 'nanog50-Bayesian-10-20-20-123456-1000-results.pkl',
-                results_dir / 'nanog50-active-10-20-5-123456-1000-results.pkl', ]
+result_paths = [results_dir / 'nanog50-random-20-40-37-1000-results.pkl',
+                results_dir / 'nanog50-Bayesian-20-30-37-1000-results.pkl',
+                results_dir / 'nanog50-Powell-20-20-37-1000-results.pkl',
+                # results_dir / 'nanog50-active-20-10-37-1000-results.pkl',
+                results_dir / 'nanog50-random-20-40-38-1000-results.pkl',
+                results_dir / 'nanog50-Bayesian-20-30-38-1000-results.pkl',
+                results_dir / 'nanog50-Powell-20-20-38-1000-results.pkl',
+                # results_dir / 'nanog50-active-20-10-38-1000-results.pkl',
+                ]
 
-_losses = dict()
+_losses = list()
 for result_path in result_paths:
     results = pickle.load(result_path.open('rb'))
     tag = RESULTS_RE.match(result_path.with_suffix('').name).group(1)
     args = demo.args_from_tag(tag)
-    results.keys()
+    best_u = results['best_u']
     sim, loss_fn, gp, knots, knot_values, plot_args = demo.setup(args)
     target = opt.OptimisationTarget(sim, loss_fn, knots)
-    losses_raw = [target.loss_from_tracks(tracks) for tracks in results['history']]
-    losses_best = list(opt.min_so_far(losses_raw))
-    _losses[f'{args.optimiser}_raw'] = pd.Series(losses_raw)
-    _losses[args.optimiser] = pd.Series(losses_best)
+    epoch_us = np.array([tracks[:1] for tracks in results['history']])
+    # losses_from_tracks = np.array([target.loss_from_tracks(tracks) for tracks in results['history']])
+    losses_from_us = np.array([target.loss_from_tracks(sim.tracks_for_u(u.T)) for u in epoch_us])
+    # assert np.isclose(losses_from_tracks, losses_from_us).all()
+    losses_best = list(opt.min_so_far(losses_from_us))
+    df = pd.DataFrame((pd.Series(losses_from_us, name='epoch_loss'),
+                       pd.Series(losses_best, name='best_loss'))).T
+    df['optimiser'] = args.optimiser
+    df['seed'] = args.seed
+    df.index.name = 'experiments'
+    df = df.reset_index()
+    _losses.append(df.melt(id_vars=['optimiser', 'seed', 'experiments'], value_name='loss'))
 
-losses = pd.DataFrame(_losses)
-losses.index.name = 'experiments'
-losses = losses.reset_index()
-losses
-losses.columns
+losses = pd.concat(_losses, axis=0)
 
 # Melt losses to make chart
 losses_chart = (
     losses
-    .loc[:, ~ losses.columns.str.endswith('_raw')]
-    .melt(id_vars='experiments', var_name='optimiser', value_name='loss')
+    .loc['best_loss' == losses['variable']]
     .query('experiments <= 18'))
+losses_chart
 
 # Make chart
 loss_chart = (
     alt.Chart(losses_chart)
     .mark_line(clip=True)
     .encode(x=alt.X('experiments:O'),
-            y=alt.Y('loss:Q', scale=alt.Scale(domain=(0, 200))),
-            color='optimiser:N')
+            # y=alt.Y('loss:Q', scale=alt.Scale(domain=(0, 200))),
+            y=alt.Y('loss:Q'),
+            color='optimiser:N',
+            detail='seed')
     .properties(width=300, height=200))
 # loss_chart.save('plots/optimiser-losses.png', scale_factor=10.)
+losses_path = plots_dir / 'optimiser-losses.svg'
+logger.info('Saving optimiser losses: %s', losses_path)
 loss_chart.save('plots/optimiser-losses.svg')
