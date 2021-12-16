@@ -116,7 +116,7 @@ def optimise_random(sim, loss_fn, knots, args):
             best = knot_values
             best_loss = loss
 
-    logger.info("Minimised loss to {:.2f} using {} function evaluations".format(best_loss, args.num_epochs))
+    logger.info('Minimised loss to {:.2f} using {} function evaluations'.format(best_loss, args.num_epochs))
     logger.info('Optimal inputs: {}'.format(np.round(best, 2)))
 
     return dict(target=target, history=target.history, best_u=best, losses=losses)
@@ -130,11 +130,11 @@ def optimise_powell(sim, loss_fn, knots, knot_values, args):
     target = OptimisationTarget(sim, loss_fn, knots)
 
     # Optimise with scipy's Powell method
-    res = scipy.optimize.minimize(target, x0=knot_values, method="Powell", options=dict(maxfev=args.num_epochs),
+    res = scipy.optimize.minimize(target, x0=knot_values, method='Powell', options=dict(maxfev=args.num_epochs),
                                   bounds=[(0, args.u_max)] * len(knot_values))
     assert res.nfev >= args.num_epochs
     logger.info(res.message)
-    logger.info("Minimised loss to {:.2f} in {} iterations using {} function evaluations".format(
+    logger.info('Minimised loss to {:.2f} in {} iterations using {} function evaluations'.format(
         res.fun, res.nit, res.nfev))
     logger.info('Optimal inputs: {}'.format(np.round(res.x, 2)))
 
@@ -142,7 +142,7 @@ def optimise_powell(sim, loss_fn, knots, knot_values, args):
 
 
 # TODO: check whether we should use knot_values like other optimisers
-def optimise_bayesian(sim, loss_fn, knots, args):
+def optimise_bayesian(sim, loss_fn, knots, knot_values, args):
     """Use Bayesian optimisation to control system."""
     import GPy
     from GPyOpt.methods import BayesianOptimization
@@ -155,11 +155,12 @@ def optimise_bayesian(sim, loss_fn, knots, args):
 
     # Define Gaussian process to model loss and optimiser
     kernel = GPy.kern.Matern52(input_dim=len(knots), variance=2**2, lengthscale=args.u_max / 3)
-    optimiser = BayesianOptimization(f=target, domain=domain, kernel=kernel, noise_var=.05**2, maximize=False)
+    optimiser = BayesianOptimization(f=target, X=knot_values, domain=domain, kernel=kernel, noise_var=.05**2,
+                                     maximize=False)
 
     # Optimise
     optimiser.run_optimization(max_iter=args.num_epochs)
-    logger.info("Optimised loss to {:.2f} using {} function evaluations".format(
+    logger.info('Optimised loss to {:.2f} using {} function evaluations'.format(
         optimiser.fx_opt, len(optimiser.get_evaluations()[1])))
     assert len(optimiser.get_evaluations()[1]) == len(target.history)
     logger.info('Optimal inputs: {}'.format(np.round(optimiser.x_opt, 2)))
@@ -202,7 +203,7 @@ def optimise(sim, loss_fn, gp, knots, knot_values, args):
         return optimise_active(sim, loss_fn, gp, knots, knot_values, args)
 
     elif 'Bayesian' == args.optimiser:
-        return optimise_bayesian(sim, loss_fn, knots, args)
+        return optimise_bayesian(sim, loss_fn, knots, knot_values, args)
 
     elif 'Powell' == args.optimiser:
         return optimise_powell(sim, loss_fn, knots, knot_values, args)

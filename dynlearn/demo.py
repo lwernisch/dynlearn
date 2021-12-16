@@ -1,14 +1,16 @@
 """
-The module provides functionality to optimise the input to an unknown dynamical
+Optimise the input to an unknown dynamical
 system (but with known or estimated dimension) to achieve a certain production
 level for a target species at a specified time point.
-
 """
 
-import numpy as np
 import argparse
+import logging
+import numpy as np
 from collections import namedtuple
 from dynlearn import simulation as sf, learn as lf
+
+logger = logging.getLogger(__name__)
 
 
 def setup(args):
@@ -113,7 +115,10 @@ def ffl_target(args):
 
     # Choose the knots at which we can control the input and the initial values
     knots = np.array([0, 5, 10])
-    knot_values = np.array([300.0, 200.0, 100.0])
+    knot_values = np.random.uniform(low=0.0, high=args.u_max, size=3)
+    # knot_values = np.array([300.0, 200.0, 100.0])
+    logger.info('Knots at: %s', np.round(knots, 2))
+    logger.info('Using initial knot values: %s', np.round(knot_values, 2))
 
     # Plotting arguments
     plot_args = {'ylim': (0, 900)}
@@ -179,7 +184,10 @@ def nanog_target(args):
 
     # Choose the knots at which we can control the input and the initial values
     knots = np.array([0, 5, 10])
-    knot_values = np.array([200.0, 150.0, 100.0])
+    knot_values = np.random.uniform(low=0.0, high=args.u_max, size=3)
+    # knot_values = np.array([200.0, 150.0, 100.0])
+    logger.info('Knots at: %s', np.round(knots, 2))
+    logger.info('Using initial knot values: %s', np.round(knot_values, 2))
 
     # Plotting arguments
     plot_args = {'ylim': (0, 80)}
