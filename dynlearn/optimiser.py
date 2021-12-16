@@ -177,8 +177,13 @@ def optimise_active(sim, loss_fn, gp, knots, knot_values, args):
     epoch_results = lf.search_u(sim=sim, loss=loss_fn, gp=gp,
                                 knots=knots, knot_values=knot_values,
                                 x0=x0,
-                                u_max_limit=args.u_max, n_epochs=args.num_epochs, n_samples=args.num_samples)
-
+                                u_max_limit=args.u_max,
+                                n_epochs=args.num_epochs,
+                                n_samples=args.num_samples,
+                                is_nonnegative=args.is_nonnegative,
+                                predict_random=args.predict_random,
+                                diag_epsilon=args.diag_epsilon,
+                                is_diff=args.gp_diff)
 
     # Wrangle results into same format as other optimisers and return
     history = np.asarray(list(map(sim.tracks_for_u, map(op.itemgetter('u'), epoch_results))))

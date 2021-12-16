@@ -21,10 +21,9 @@ def setup(args):
 
 
 def arg_parser():
+
     parser = argparse.ArgumentParser()
     parser.add_argument('--demo', default='nanog50', help='Which demo to use')
-    parser.add_argument('-S', '--num-samples', type=int, default=10,
-                        help='Number of samples to draw from GP dynamical model')
     parser.add_argument('-T', '--num-times', type=int, default=20, help='Number of simulation steps')
     parser.add_argument('-E', '--num-epochs', type=int, default=5, help='Number of epochs')
     parser.add_argument('--u-max', type=float, default=1000, help='Maximum value for control inputs')
@@ -32,6 +31,43 @@ def arg_parser():
     parser.add_argument('--device', default='', help='Device to run on')
     parser.add_argument('--optimiser', default='active', choices=('active', 'Bayesian', 'Powell', 'random'),
                         help='Optimiser to run')
+
+    subparsers = parser.add_subparsers(help='optimiser to run')
+
+    # Random
+    parser_random = subparsers.add_parser('random', help='Use random search')
+    parser_random.set_defaults(optimiser='random')
+
+    # Active
+    parser_active = subparsers.add_parser('active', help='Use active learning in a GPDS')
+    parser_active.set_defaults(optimiser='active')
+    parser_active.add_argument('-S', '--num-samples', type=int, default=10,
+                               help='Number of samples to draw from GP dynamical model')
+    parser_active.add_argument('--gp-diff', dest='gp_diff', action='store_true',
+                               help='The GP models the difference.')
+    parser_active.add_argument('--gp-absolute', dest='gp_diff', action='store_false',
+                               help='The GP models the absolute value.')
+    parser_active.set_defaults(gp_diff=True)
+    parser_active.add_argument('--is-nonnegative', dest='is_nonnegative', action='store_true',
+                               help='GPs must be non-negative')
+    parser_active.add_argument('--can-be-negative', dest='is_nonnegative', action='store_false',
+                               help='GPs can be negative')
+    parser_active.set_defaults(is_nonnegative=True)
+    parser_active.add_argument('--predict-random', dest='predict_random', action='store_true',
+                               help='Simulate from GP posteriors')
+    parser_active.add_argument('--predict-mean', dest='predict_random', action='store_false',
+                               help='Simulate using GP posterior means')
+    parser_active.set_defaults(predict_random=True)
+    parser_active.add_argument('--diag-epsilon', type=float, default=1e-3, help='Diagonal stabiliser for covariance')
+
+    # Powell
+    parser_powell = subparsers.add_parser('powell', help='Use Powell optimisation')
+    parser_powell.set_defaults(optimiser='Powell')
+
+    # Bayesian optimisation
+    parser_bayesian = subparsers.add_parser('bayesian', help='Use bayesian optimisation')
+    parser_bayesian.set_defaults(optimiser='Bayesian')
+
     return parser
 
 

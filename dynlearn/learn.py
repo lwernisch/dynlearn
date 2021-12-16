@@ -171,8 +171,14 @@ def make_u_col_tf(u_col, trainable_inds, u_type, u_max_limit=None,
     return tf.stack(u_lst, 0)
 
 
-def search_u(sim, loss, gp, knots, knot_values, x0, u_max_limit=None,
-             n_epochs=6, n_samples=10):
+def search_u(sim, loss, gp, knots, knot_values, x0,
+             u_max_limit=None,
+             n_epochs=6,
+             n_samples=10,
+             diag_epsilon=1e-3,
+             is_nonnegative=True,
+             predict_random=True,
+             is_diff=True):
     """Main forcing input optimisation function using a GP to approximate
     a dynamical system given by a simulator. In ``n_epochs`` rounds of
     suggesting a forcing input followed by an experiment and improvement of
@@ -230,7 +236,7 @@ def search_u(sim, loss, gp, knots, knot_values, x0, u_max_limit=None,
         for epoch in range(n_epochs):
             #
             # Run the simulation and update the GP with new data
-            k, X_span, Y_span = gp.kernel_for_u(u_tracks=u_col.T, sim=sim, k=k)
+            k, X_span, Y_span = gp.kernel_for_u(u_tracks=u_col.T, sim=sim, k=k, is_diff=is_diff)
 
             logger.info("Epoch {}: start with u_tracks {}".format(epoch, np.round(u_col.T[:, knots], 2)))
             logger.info("Epoch {}: current sim achieves {:.2f}".format(epoch, Y_span[n_steps - 1, loss.target_ind]))
@@ -240,10 +246,12 @@ def search_u(sim, loss, gp, knots, knot_values, x0, u_max_limit=None,
             # run n_samples through the system defined by the GP
             rtracks = []
             for i in range(n_samples):
-                rtracks.append(k.tf_recursive(u_col_tf=u_col_tf, x0=x0,
-                                              is_epsilon=True,
-                                              is_random=True,
-                                              is_nonnegative=True))
+                rtracks.append(k.tf_recursive(u_col_tf=u_col_tf,
+                                              x0=x0,
+                                              diag_epsilon=diag_epsilon,
+                                              predict_random=predict_random,
+                                              is_nonnegative=is_nonnegative,
+                                              is_diff=is_diff))
 
             #
             # Construct a TensorFlow computation graph to

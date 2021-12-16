@@ -162,7 +162,7 @@ class Kernel:
     def tf_Kzz(self, z, is_epsilon=False):
         return self.tf_Kvw(z, z, is_epsilon)
 
-    def tf_predict(self, z, is_epsilon=False, is_cov=True):
+    def tf_predict(self, z, diag_epsilon=False, is_cov=True):
         """Predict output for new inputs, TensorFlow version
 
         Args:
@@ -182,39 +182,33 @@ class Kernel:
         mean = tf.matmul(Kzx, self.Kinv_y)
         var = None
         if is_cov:
-            Kzz = self.tf_Kzz(z, is_epsilon)
+            Kzz = self.tf_Kzz(z, diag_epsilon)
             var = Kzz - tf.matmul(tf.matmul(Kzx, self.Kinv), tf.transpose(Kzx))
         # mean is n_sample(z) x n_tracks(y), var is n_sample(z) x n_sample(z)
         return (mean, var)
 
-    def tf_predict_random(self, z, is_epsilon=False, cholesky_epsilon=1e-3,
-                          n_z=1):
+    def tf_predict_random(self, z, diag_epsilon=1e-3, n_z=1):
         random_vecs = tf.constant(
             np.float64(np.random.normal(size=(n_z, self.output_dim))),
             dtype="float64")
-        mean, var = self.tf_predict(z, is_epsilon, is_cov=True)
-        # if not is_epsilon:
-        # stabilise for Cholesky with cholesky_epsilon*I
-        var = var + cholesky_epsilon * tf.eye(tf.shape(var)[0],
-                                              dtype="float64")
+        mean, var = self.tf_predict(z, diag_epsilon, is_cov=True)
+        if diag_epsilon is not None:
+            # stabilise for Cholesky with diag_epsilon*I
+            var = var + diag_epsilon * tf.eye(tf.shape(var)[0], dtype='float64')
         return mean + tf.matmul(tf.linalg.cholesky(var), random_vecs)
 
-    def tf_predict_random_single(self, z, is_epsilon=False):
-        random_vecs = tf.constant(
-            np.float64(np.random.normal(size=(1, self.output_dim))),
-            dtype="float64")
-        mean, var = self.tf_predict(z, is_epsilon, is_cov=True)
+    def tf_predict_random_single(self, z, diag_epsilon=False):
+        random_vecs = tf.constant(np.float64(np.random.normal(size=(1, self.output_dim))), dtype='float64')
+        mean, var = self.tf_predict(z, diag_epsilon, is_cov=True)
         return mean + tf.sqrt(var) * random_vecs
 
-    def tf_predict_value(self, z, is_epsilon=False, is_random=False):
-        if is_random:
-            return self.tf_predict_random(z, is_epsilon=is_epsilon)
+    def tf_predict_value(self, z, diag_epsilon=False, predict_random=False):
+        if predict_random:
+            return self.tf_predict_random(z, diag_epsilon=diag_epsilon)
         else:
-            return self.tf_predict(z, is_epsilon=is_epsilon, is_cov=False)[0]
+            return self.tf_predict(z, diag_epsilon=diag_epsilon, is_cov=False)[0]
 
-    def tf_recursive(self, u_col_tf, x0, is_epsilon=False,
-                     is_random=False,
-                     is_nonnegative=False, is_diff=True):
+    def tf_recursive(self, u_col_tf, x0, diag_epsilon=False, predict_random=False, is_nonnegative=False, is_diff=True):
         """Iteratively solve the dynamical system defined by the GP providing
         a (random) transition function as defined by the current GP inputs
         and outputs and ``u_col_tf`` as external forcing. Start with ``x0``
@@ -232,8 +226,8 @@ class Kernel:
         Args:
             u_col_tf ((t,d) tf.Tensor): *d*-dim external forcing for *t* steps
             x0 ((k,1) np.array): *k* initial values of species
-            is_epsilon: assume measurement error
-            is_random: use GP covariance uncertainty
+            diag_epsilon: assume measurement error
+            predict_random: use GP covariance uncertainty
             is_nonnegative: impose nonnegativity constraint on species
             is_diff: assume the species difference is modeled by GP
 
@@ -255,8 +249,7 @@ class Kernel:
             #
             # Predict next x from previous
             # for prediction need z is (n = 1) x dim array
-            x_pred = self.tf_predict_value(rtracks_prev, is_epsilon=is_epsilon,
-                                           is_random=is_random)
+            x_pred = self.tf_predict_value(rtracks_prev, diag_epsilon=diag_epsilon, predict_random=predict_random)
             #
             # Are we predicting the change in x or x itself?
             if is_diff:
