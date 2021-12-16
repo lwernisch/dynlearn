@@ -187,9 +187,10 @@ def optimise_active(sim, loss_fn, gp, knots, knot_values, args):
                                 is_diff=args.gp_diff)
 
     # Wrangle results into same format as other optimisers and return
-    history = np.asarray(list(map(sim.tracks_for_u, map(op.itemgetter('u'), epoch_results))))
+    epoch_us = list(map(op.itemgetter('u'), epoch_results))
+    history = np.asarray(list(map(sim.tracks_for_u, epoch_us)))
     losses = list(map(op.itemgetter('actual_loss'), epoch_results))
-    return dict(epoch_results=epoch_results, history=history, losses=losses)
+    return dict(epoch_results=epoch_results, history=history, losses=losses, best_u=epoch_us[-1])
 
 
 def optimise(sim, loss_fn, gp, knots, knot_values, args):

@@ -131,7 +131,7 @@ class FeedForwardOrDSimulation(DiscreteSimulation):
         self.a = 150
         self.ha, self.hi = 5, 5
         self.ka, self.ki = 400, 300
-        self.l = 0.25
+        self.l = 0.25  # noqa: E741
         self.s = 0.0
 
     def f_trans_ffw(self, x_old, u):
@@ -381,4 +381,3 @@ def simulate(sim, u_tracks):
     X_span = tracks[:, :-1].T  # (T-1) x input_dim input pts
     Y_span = tracks[u_dim:, 1:].T  # (T-1) x output_dim multi output points
     return tracks, u_dim, X_span, Y_span
-
