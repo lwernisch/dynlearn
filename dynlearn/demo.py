@@ -9,6 +9,8 @@ import logging
 import numpy as np
 from collections import namedtuple
 from dynlearn import simulation as sf, learn as lf
+from datetime import datetime
+from uuid import uuid4
 
 logger = logging.getLogger(__name__)
 
@@ -73,7 +75,8 @@ def arg_parser():
 
 def tag_from_args(args):
     "Construct a string that represents the arguments."
-    return f'{args.demo}-{args.optimiser}-{args.num_times}-{args.num_epochs}-{args.seed}-{args.u_max}'
+    eventid = f'{datetime.now().strftime("%Y%m-%d%H-%M%S")}-{uuid4()}'
+    return f'{args.demo}-{args.num_times}-{args.u_max}-{args.seed}-{args.optimiser}-{args.num_epochs}-{eventid}'
 
 
 _ArgsDuckType = namedtuple('_ArgsDuckType', ['demo', 'optimiser', 'num_times', 'num_epochs', 'seed', 'u_max'])
@@ -83,11 +86,11 @@ def args_from_tag(tag):
     "Reconstruct the arguments from a tag."
     split = tag.split('-')
     return _ArgsDuckType(demo=split[0],
-                         optimiser=split[1],
-                         num_times=int(split[2]),
-                         num_epochs=int(split[3]),
-                         seed=int(split[4]),
-                         u_max=float(split[5]))
+                         num_times=int(split[1]),
+                         u_max=float(split[2]),
+                         seed=int(split[3]),
+                         optimiser=split[4],
+                         num_epochs=int(split[5]))
 
 
 def ffl_target(args):
