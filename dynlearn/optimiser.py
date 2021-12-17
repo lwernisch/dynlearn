@@ -119,7 +119,7 @@ def optimise_random(sim, loss_fn, knots, knot_values, args):
     logger.info('Minimised loss to {:.2f} using {} function evaluations'.format(best_loss, args.num_epochs))
     logger.info('Optimal inputs: {}'.format(np.round(best, 2)))
 
-    return dict(target=target, history=target.history, best_u=best, losses=losses)
+    return dict(target=target, history=target.history, best_u=best, losses=losses, args=args)
 
 
 def optimise_powell(sim, loss_fn, knots, knot_values, args):
@@ -138,7 +138,7 @@ def optimise_powell(sim, loss_fn, knots, knot_values, args):
         res.fun, res.nit, res.nfev))
     logger.info('Optimal inputs: {}'.format(np.round(res.x, 2)))
 
-    return dict(target=target, history=target.history, best_u=res.x, losses=target.losses)
+    return dict(target=target, history=target.history, best_u=res.x, losses=target.losses, args=args)
 
 
 # TODO: check whether we should use knot_values like other optimisers
@@ -165,7 +165,7 @@ def optimise_bayesian(sim, loss_fn, knots, knot_values, args):
     assert len(optimiser.get_evaluations()[1]) == len(target.history)
     logger.info('Optimal inputs: {}'.format(np.round(optimiser.x_opt, 2)))
 
-    return dict(target=target, history=target.history, best_u=optimiser.x_opt, losses=target.losses)
+    return dict(target=target, history=target.history, best_u=optimiser.x_opt, losses=target.losses, args=args)
 
 
 def optimise_active(sim, loss_fn, gp, knots, knot_values, args):
@@ -190,7 +190,7 @@ def optimise_active(sim, loss_fn, gp, knots, knot_values, args):
     epoch_us = list(map(op.itemgetter('u'), epoch_results))
     history = np.asarray(list(map(sim.tracks_for_u, epoch_us)))
     losses = list(map(op.itemgetter('actual_loss'), epoch_results))
-    return dict(epoch_results=epoch_results, history=history, losses=losses, best_u=epoch_us[-1])
+    return dict(epoch_results=epoch_results, history=history, losses=losses, best_u=epoch_us[-1], args=args)
 
 
 def optimise(sim, loss_fn, gp, knots, knot_values, args):
