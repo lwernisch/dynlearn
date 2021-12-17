@@ -173,10 +173,14 @@ def optimise_active(sim, loss_fn, gp, knots, knot_values, args):
 
     from dynlearn import learn as lf
 
+    # Define target function of optimiser
+    target = OptimisationTarget(sim, loss_fn, knots)
+
     # TODO: check x0 used similarly in other optimisers
     x0 = np.zeros(len(sim.output_vars))
-    epoch_results = lf.search_u(sim=sim, loss=loss_fn, gp=gp,
-                                knots=knots, knot_values=knot_values,
+    epoch_results = lf.search_u(target=target,
+                                gp=gp,
+                                knot_values=knot_values,
                                 x0=x0,
                                 u_max_limit=args.u_max,
                                 n_epochs=args.num_epochs,

@@ -63,7 +63,7 @@ class Simulation(metaclass=ABCMeta):
         return np.reshape(U, (1, -1))
 
     def tracks_for_u(self, u_tracks):
-        """The tracks resulting from the forcing control input."""
+        """The tracks (u and x) resulting from the forcing control input."""
         self.set_inputs(tracks=u_tracks.T, time_inds=np.arange(u_tracks.shape[0]))
         self.dynamic_simulate()
         return self.tracks

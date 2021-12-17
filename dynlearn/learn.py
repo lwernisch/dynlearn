@@ -97,29 +97,29 @@ class FixedGaussGP:
                 - **Y_span** (*(t-1,m) np.array*): new GP output
         """
         tracks, u_dim, X_span, Y_span = simulation.simulate(sim, u_tracks)
+
         # Calculate the output of the GP
         if is_diff:
             # The difference between consecutive time points
             Y_gp = tracks[u_dim:, 1:].T - tracks[u_dim:, :-1].T
         else:
             Y_gp = Y_span
-        #
+
         # Do we have a kernel?
         if k is None:
-            #
             # Choose a default kernel as none given
             k = gpf.Kernel(lengthscales=self.lengthscales,
                            variance=self.variance,
                            likelihood_variance=self.likelihood_variance,
                            x=X_span)
             k.set_y(Y_gp)
+
         else:
-            #
             # add to existing kernel
             k.add_x(X_span)
             k.add_y(Y_gp)
 
-        return (k, X_span, Y_span)
+        return k, X_span, Y_span
 
 
 # -------------  Core estimation functions
@@ -171,7 +171,10 @@ def make_u_col_tf(u_col, trainable_inds, u_type, u_max_limit=None,
     return tf.stack(u_lst, 0)
 
 
-def search_u(sim, loss, gp, knots, knot_values, x0,
+def search_u(target,
+             gp,
+             knot_values,
+             x0,
              u_max_limit=None,
              n_epochs=6,
              n_samples=10,
@@ -188,10 +191,8 @@ def search_u(sim, loss, gp, knots, knot_values, x0,
     only considering the mean or taking the variance into account.
 
     Args:
-        sim (simulation.Simulation): the simulator for experiments
-        loss (Loss): target loss
+        sim (optimiser.OptimisationTarget): optimisation target, encapsulates sim, loss_fn and knots
         gp (FixedGaussGP): GP for estimating dynamical system
-        knots (List[int]): simulation steps where input can be optimised
         knot_values (List[float]): starting values for forcing input
         x0 (List[float]): starting values for nonforced species
         u_max_limit (float): limit on maximum for forcing input
@@ -211,7 +212,7 @@ def search_u(sim, loss, gp, knots, knot_values, x0,
     """
     #
     # Calculate the values of u across all time points from the knots and their values
-    u_col = sim.u_tracks_from_knots(knots, knot_values).T
+    u_col = target.sim.u_tracks_from_knots(target.knots, knot_values).T
     # How many input, output pairs do we have to train the GP?
     n_steps = u_col.shape[0] - 1
     # We have no kernel to start with
@@ -220,8 +221,8 @@ def search_u(sim, loss, gp, knots, knot_values, x0,
     with tf.Session() as sess:
         #
         # Construct TF variables for the forcing inputs
-        u_col_tf = make_u_col_tf(u_col=u_col, trainable_inds=knots,
-                                 u_type=sim.u_type,
+        u_col_tf = make_u_col_tf(u_col=u_col, trainable_inds=target.knots,
+                                 u_type=target.sim.u_type,
                                  u_max_limit=u_max_limit)
 
         #
@@ -236,10 +237,11 @@ def search_u(sim, loss, gp, knots, knot_values, x0,
         for epoch in range(n_epochs):
             #
             # Run the simulation and update the GP with new data
-            k, X_span, Y_span = gp.kernel_for_u(u_tracks=u_col.T, sim=sim, k=k, is_diff=is_diff)
+            k, X_span, Y_span = gp.kernel_for_u(u_tracks=u_col.T, sim=target.sim, k=k, is_diff=is_diff)
 
-            logger.info("Epoch {}: start with u_tracks {}".format(epoch, np.round(u_col.T[:, knots], 2)))
-            logger.info("Epoch {}: current sim achieves {:.2f}".format(epoch, Y_span[n_steps - 1, loss.target_ind]))
+            logger.info("Epoch {}: start with u_tracks {}".format(epoch, np.round(u_col.T[:, target.knots], 2)))
+            logger.info("Epoch {}: current sim achieves {:.2f}".format(
+                epoch, Y_span[n_steps - 1, target.loss_fn.target_ind]))
 
             #
             # Construct a TensorFlow computation graph to
@@ -256,8 +258,8 @@ def search_u(sim, loss, gp, knots, knot_values, x0,
             #
             # Construct a TensorFlow computation graph to
             # average loss over samples
-            mean_loss = loss.mean_loss(rtracks, u_col_tf)
-            mean_target = loss.mean_target(rtracks)
+            mean_loss = target.loss_fn.mean_loss(rtracks, u_col_tf)
+            mean_target = target.loss_fn.mean_target(rtracks)
 
             #
             # Minimise the loss using scipy optimizer
@@ -271,21 +273,21 @@ def search_u(sim, loss, gp, knots, knot_values, x0,
             logger.info("Epoch {}: loss {:.2f} with u_col {} in time {:.1f}s".format(
                 epoch, mean_loss_eval, np.round(u_col.T[:, ], 2), np.round(time.time() - time0, 2)))
             logger.info("Epoch {}: mean target {:.2f} of target {:.2f}".format(
-                epoch, mean_target_eval, loss.target))
+                epoch, mean_target_eval, target.loss_fn.target))
 
             #
             # Evaluate the real loss given the control input
-            sim.set_inputs(u_col.T, time_inds=np.arange(u_col.shape[0]))
-            sim.dynamic_simulate()
-            actual_loss_tf = loss.mean_loss(sim.tracks.T[np.newaxis], u_col)
+            target.sim.set_inputs(u_col.T, time_inds=np.arange(u_col.shape[0]))
+            target.sim.dynamic_simulate()
+            actual_loss_tf = target.loss_fn.mean_loss(target.sim.tracks.T[np.newaxis], u_col)
             actual_loss = sess.run(actual_loss_tf)
 
             #
             # Store epoch results
             results.append(dict(k=k, X=X_span, y=Y_span, u=u_col, mean_loss=mean_loss_eval, actual_loss=actual_loss))
 
-            logger.info("Epoch {}: end with u_col {}".format(epoch, np.round(u_col.T[:, knots], 2)))
-            logger.info("Epoch {}: sim achieves {:.2f}".format(epoch, Y_span[n_steps - 1, loss.target_ind]))
+            logger.info("Epoch {}: end with u_col {}".format(epoch, np.round(u_col.T[:, target.knots], 2)))
+            logger.info("Epoch {}: sim achieves {:.2f}".format(epoch, Y_span[n_steps - 1, target.loss_fn.target_ind]))
 
             # Resample knot values randomly so as not to get stuck in local minima
             # knot_values = np.random.uniform(low=0.0, high=u_max_limit, size=knot_values.shape)
