@@ -18,17 +18,31 @@ RESULTS_RE = re.compile('(.+)-results')
 
 plots_dir = Path('plots')
 
-seeds = [37]
+seeds = range(139, 148)
+
+
+def result_paths_for_seeds(seeds):
+    for seed in seeds:
+        yield results_dir / f'nanog50-random-20-40-{seed}-1000-results.pkl'
+        yield results_dir / f'nanog50-Bayesian-20-30-{seed}-1000-results.pkl'
+        yield results_dir / f'nanog50-Powell-20-20-{seed}-1000-results.pkl'
+        yield results_dir / f'nanog50-active-20-10-{seed}-1000-results.pkl'
+
+
 results_dir = Path('results')
-result_paths = [results_dir / 'nanog50-random-20-40-37-1000-results.pkl',
-                results_dir / 'nanog50-Bayesian-20-30-37-1000-results.pkl',
-                results_dir / 'nanog50-Powell-20-20-37-1000-results.pkl',
-                # results_dir / 'nanog50-active-20-10-37-1000-results.pkl',
-                results_dir / 'nanog50-random-20-40-38-1000-results.pkl',
-                results_dir / 'nanog50-Bayesian-20-30-38-1000-results.pkl',
-                results_dir / 'nanog50-Powell-20-20-38-1000-results.pkl',
-                # results_dir / 'nanog50-active-20-10-38-1000-results.pkl',
-                ]
+# result_paths = [results_dir / 'nanog50-random-20-40-37-1000-results.pkl',
+#                 results_dir / 'nanog50-Bayesian-20-30-37-1000-results.pkl',
+#                 results_dir / 'nanog50-Powell-20-20-37-1000-results.pkl',
+#                 # results_dir / 'nanog50-active-20-10-37-1000-results.pkl',
+#                 results_dir / 'nanog50-random-20-40-38-1000-results.pkl',
+#                 results_dir / 'nanog50-Bayesian-20-30-38-1000-results.pkl',
+#                 results_dir / 'nanog50-Powell-20-20-38-1000-results.pkl',
+#                 # results_dir / 'nanog50-active-20-10-38-1000-results.pkl',
+#                 ]
+result_paths = list(result_paths_for_seeds(seeds))
+result_paths
+
+# result_path = results_dir / 'nanog50-active-20-10-40-1000-results.pkl'
 
 _losses = list()
 for result_path in result_paths:

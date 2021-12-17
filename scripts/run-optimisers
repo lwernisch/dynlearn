@@ -1,6 +1,6 @@
 #!/bin/bash -ex
 
-for SEED in 39 40 41
+for SEED in 139 140 141 142 143 144 145 146 147
 do
   scripts/dynlearn-demo --seed $SEED --num-epochs 40 random
   scripts/dynlearn-demo --seed $SEED --num-epochs 30 Bayesian
