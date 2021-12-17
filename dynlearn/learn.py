@@ -211,7 +211,7 @@ def search_u(sim, loss, gp, knots, knot_values, x0,
     """
     #
     # Calculate the values of u across all time points from the knots and their values
-    u_col = sim.u_tracks_from_knots(sim.n_times, knots, knot_values).T
+    u_col = sim.u_tracks_from_knots(knots, knot_values).T
     # How many input, output pairs do we have to train the GP?
     n_steps = u_col.shape[0] - 1
     # We have no kernel to start with
@@ -286,6 +286,10 @@ def search_u(sim, loss, gp, knots, knot_values, x0,
 
             logger.info("Epoch {}: end with u_col {}".format(epoch, np.round(u_col.T[:, knots], 2)))
             logger.info("Epoch {}: sim achieves {:.2f}".format(epoch, Y_span[n_steps - 1, loss.target_ind]))
+
+            # Resample knot values randomly so as not to get stuck in local minima
+            # knot_values = np.random.uniform(low=0.0, high=u_max_limit, size=knot_values.shape)
+            # u_col = sim.u_tracks_from_knots(knots, knot_values).T
 
         # end for loop
     # end with

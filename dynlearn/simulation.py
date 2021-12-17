@@ -11,8 +11,7 @@ Example:
     Use the subclass :class:`StemCellSwitch` of :class:`ContinuousSimulation`::
 
         sim = StemCellSwitch(n_times=20, real_time=10.0)
-        input_tracks = sim3.u_tracks_from_knots(sim3.n_times, knots=[0,5,10],
-                                                knot_values=[500.0,300.0,100.0])
+        input_tracks = sim3.u_tracks_from_knots(knots=[0,5,10], knot_values=[500.0,300.0,100.0])
         sim.set_inputs(tracks=input_tracks,
                         time_inds=np.arange(input_tracks.shape[1]))
 
@@ -24,7 +23,7 @@ Example:
 
 """
 
-from abc import abstractmethod
+from abc import abstractmethod, ABCMeta
 import matplotlib.pyplot as plt
 import logging
 import numpy as np
@@ -34,27 +33,34 @@ from dynlearn import get_file_name
 logger = logging.getLogger(__name__)
 
 
-class Simulation:
+class Simulation(metaclass=ABCMeta):
     """Generic simulation class"""
 
-    @staticmethod
-    def pulse_u_tracks(n_times, knots, knot_values):
-        U = np.zeros(n_times)
-        U[knots] = knot_values
-        return np.reshape(U, (1, -1))
+    def __init__(self, n_times, output_vars, u_type):
+        self.n_times = n_times
+        self.output_vars = output_vars
+        self.u_type = u_type
 
-    @staticmethod
-    def step_u_tracks(n_times, knots, knot_values):
-        U = np.zeros(n_times)
-        for k in range(len(knots) - 1):
-            U[knots[k]:knots[k + 1]] = knot_values[k]
-        U[knots[-1]:] = knot_values[-1]
-        return np.reshape(U, (1, -1))
+    @property
+    def output_dim(self):
+        len(self.output_vars)
 
     @property
     def tracks(self):
         """self.U, self.X stacked"""
         return np.vstack([self.U, self.X])
+
+    def step_u_tracks(self, knots, knot_values):
+        U = np.zeros(self.n_times)
+        for k in range(len(knots) - 1):
+            U[knots[k]:knots[k + 1]] = knot_values[k]
+        U[knots[-1]:] = knot_values[-1]
+        return np.reshape(U, (1, -1))
+
+    def pulse_u_tracks(self, knots, knot_values):
+        U = np.zeros(self.n_times)
+        U[knots] = knot_values
+        return np.reshape(U, (1, -1))
 
     def tracks_for_u(self, u_tracks):
         """The tracks resulting from the forcing control input."""
@@ -88,13 +94,9 @@ class DiscreteSimulation(Simulation):
     #    x_start: initial values of species
     #    u_type: "peak" or "step"
 
-    def __init__(self, n_times, u_tracks_from_knots,
-                 output_vars, x_start, u_type):
-        self.n_times = n_times
-        self.u_tracks_from_knots = u_tracks_from_knots
-        self.output_vars = output_vars
+    def __init__(self, n_times, output_vars, x_start, u_type):
+        super().__init__(n_times, output_vars, u_type)
         self.x_start = x_start
-        self.u_type = u_type
         self.d = len(x_start)
         self.tr = np.arange(0, self.n_times)
         self.ts = np.linspace(0, self.n_times - 1, self.n_times)
@@ -123,16 +125,20 @@ class FeedForwardOrDSimulation(DiscreteSimulation):
     :class:`FeedForwardOrCSimulation`"""
 
     def __init__(self, n_times):
-        DiscreteSimulation.__init__(self, n_times,
-                                    u_tracks_from_knots=self.pulse_u_tracks,
-                                    output_vars=['U0', 'X1', 'X2'],
-                                    x_start=[0, 0, 0], u_type="peak")
+        super().__init__(self,
+                         n_times,
+                         output_vars=['U0', 'X1', 'X2'],
+                         x_start=[0, 0, 0],
+                         u_type='peak')
         self.f_trans = self.f_trans_ffw
         self.a = 150
         self.ha, self.hi = 5, 5
         self.ka, self.ki = 400, 300
         self.l = 0.25  # noqa: E741
         self.s = 0.0
+
+    def u_tracks_from_knots(self, knots, knot_values):
+        return self.pulse_u_tracks(knots, knot_values)
 
     def f_trans_ffw(self, x_old, u):
         x = np.zeros(self.d)
@@ -169,16 +175,11 @@ class ContinuousSimulation(Simulation):
         end
         '''
 
-    def __init__(self, n_times, u_tracks_from_knots,
-                 real_time, output_vars, u_type, model_str=None):
-        self.u_tracks_from_knots = u_tracks_from_knots
-        self.n_times = n_times
+    def __init__(self, n_times, real_time, output_vars, u_type, model_str=None):
+        super().__init__(n_times, output_vars, u_type)
         if real_time is None:
             real_time = n_times
         self.real_time = real_time
-        self.output_vars = output_vars
-        self.output_dim = len(self.output_vars)
-        self.u_type = u_type
         self.preamble_str = self.GENERIC_MODEL_FUNCTIONS
         self.model_str = model_str
 
@@ -223,7 +224,6 @@ class FeedForwardOrCSimulation(ContinuousSimulation):
 
     def __init__(self, n_times, real_time=None):
         ContinuousSimulation.__init__(self, n_times=n_times,
-                                      u_tracks_from_knots=self.pulse_u_tracks,
                                       real_time=real_time,
                                       output_vars=['U0', 'X1', 'X2'],
                                       u_type="peak")
@@ -239,6 +239,9 @@ class FeedForwardOrCSimulation(ContinuousSimulation):
             lu = 0.01;
             l1 = 0.25; l2 = 0.25
         '''
+
+    def u_tracks_from_knots(self, knots, knot_values):
+        return self.pulse_u_tracks(knots, knot_values)
 
     @staticmethod
     def get_input_str(t, d, value):
@@ -267,18 +270,19 @@ class StemCellSwitch(ContinuousSimulation):
     """
 
     def __init__(self, n_times, real_time):
-        ContinuousSimulation.__init__(self, n_times=n_times,
-                                      u_tracks_from_knots=self.step_u_tracks,
+        ContinuousSimulation.__init__(self,
+                                      n_times=n_times,
                                       real_time=real_time,
-                                      output_vars=['OCT4', 'SOX2', 'NANOG',
-                                                   'OCT4_SOX2', 'Protein'],
-                                      u_type="step")
-        file_name = \
-            get_file_name('biomodels/oct4_reversible_0203_template.ant')
+                                      output_vars=['OCT4', 'SOX2', 'NANOG', 'OCT4_SOX2', 'Protein'],
+                                      u_type='step')
+        file_name = get_file_name('biomodels/oct4_reversible_0203_template.ant')
         with open(file_name, 'r') as myfile:
             data = myfile.read()
         r = te.loadAntimonyModel(data)
         self.model_str = r.getCurrentAntimony()
+
+    def u_tracks_from_knots(self, knots, knot_values):
+        return self.step_u_tracks(knots, knot_values)
 
     @staticmethod
     def get_input_str(t, d, value):
@@ -292,8 +296,7 @@ def demo():
     # -- discrete version of FF
 
     sim = FeedForwardOrDSimulation(n_times=20)
-    u_tracks = sim.u_tracks_from_knots(sim.n_times, knots=[0, 5, 10],
-                                       knot_values=[300.0, 200.0, 100.0])
+    u_tracks = sim.u_tracks_from_knots(knots=[0, 5, 10], knot_values=[300.0, 200.0, 100.0])
     sim.set_inputs(u_tracks)
     sim.dynamic_simulate()
     plt.clf()
@@ -302,8 +305,7 @@ def demo():
     # -- continuous version of FF
 
     sim2 = FeedForwardOrCSimulation(n_times=20)
-    input_tracks = sim.u_tracks_from_knots(sim.n_times, knots=[0, 5, 10],
-                                           knot_values=[300.0, 200.0, 100.0])
+    input_tracks = sim.u_tracks_from_knots(knots=[0, 5, 10], knot_values=[300.0, 200.0, 100.0])
     sim2.set_inputs(tracks=input_tracks,
                     time_inds=np.arange(input_tracks.shape[1]))
     sim2.dynamic_simulate()
@@ -318,9 +320,7 @@ def demo():
 
     n_times = 20
     sim3 = StemCellSwitch(n_times=n_times, real_time=10.0)
-    input_tracks = \
-        sim3.u_tracks_from_knots(sim3.n_times, knots=[0, 5, 10],
-                                 knot_values=[581.88, 143.06, 92.76])
+    input_tracks = sim3.u_tracks_from_knots(knots=[0, 5, 10], knot_values=[581.88, 143.06, 92.76])
     sim3.set_inputs(tracks=input_tracks,
                     time_inds=np.arange(input_tracks.shape[1]))
 
@@ -345,9 +345,7 @@ def demo():
     def knot_fct(x, knots, sim, name):
         # maximise the final output of species 'name'
         knot_values = np.array(x)
-        uvals = \
-            sim.u_tracks_from_knots(sim.n_times, knots,
-                                    knot_values).T  # uvals always col vector
+        uvals = sim.u_tracks_from_knots(knots, knot_values).T  # uvals always col vector
         input_tracks = uvals.T
         sim.set_inputs(tracks=input_tracks,
                        time_inds=np.arange(input_tracks.shape[1]))
