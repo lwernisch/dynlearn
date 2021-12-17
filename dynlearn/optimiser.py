@@ -41,6 +41,10 @@ class OptimisationTarget:
     def history(self):
         return np.asarray(self._history)
 
+    @property
+    def recent_tracks(self):
+        return self._history[-1]
+
     @staticmethod
     def _squeeze_knot_values(knot_values):
         """Sometimes knot values are supplied with extra leading dimensions of size 1, so squeeze these out."""
@@ -54,15 +58,11 @@ class OptimisationTarget:
         # Convert knot values to u tracks
         knot_values = OptimisationTarget._squeeze_knot_values(knot_values)
         self.knot_values.append(np.array(knot_values))
-        u_tracks = self.sim.u_tracks_from_knots(self.sim.n_times, knots=self.knots, knot_values=knot_values)
+        u_tracks = self.sim.u_tracks_from_knots(knots=self.knots, knot_values=knot_values)
 
         # Simulate
-        self.sim.set_inputs(tracks=u_tracks, time_inds=np.arange(u_tracks.shape[1]))
-        self.sim.dynamic_simulate()
-
-        # Remember simulation history
-        tracks = self.sim.tracks
-        self._history.append(tracks)
+        tracks = self.sim.tracks_for_u(u_tracks.T)
+        self._history.append(tracks)  # Remember simulation history
 
         # Calculate loss
         loss = self.loss_from_tracks(tracks)
@@ -191,10 +191,12 @@ def optimise_active(sim, loss_fn, gp, knots, knot_values, args):
                                 is_diff=args.gp_diff)
 
     # Wrangle results into same format as other optimisers and return
-    epoch_us = list(map(op.itemgetter('u'), epoch_results))
-    history = np.asarray(list(map(sim.tracks_for_u, epoch_us)))
-    losses = list(map(op.itemgetter('actual_loss'), epoch_results))
-    return dict(epoch_results=epoch_results, history=history, losses=losses, best_u=epoch_us[-1], args=args)
+    return dict(epoch_results=epoch_results,
+                target=target,
+                history=target.history,
+                losses=target.losses,
+                best_u=epoch_results[-1]['u'],
+                args=args)
 
 
 def optimise(sim, loss_fn, gp, knots, knot_values, args):

@@ -78,13 +78,20 @@ class FixedGaussGP:
         self.variance = variance
         self.likelihood_variance = likelihood_variance
 
-    def kernel_for_u(self, u_tracks, sim, k=None, is_diff=True):
-        """Runs the simulation *sim* for the forcing inputs *u_tracks* and
-        adds the resulting input-output relationship to the GP *k*.
+    def update_kernel(self,
+                      tracks,
+                      u_dim,
+                      X_span,
+                      Y_span,
+                      k=None,
+                      is_diff=True):
+        """Adds the output of the simulation for the forcing inputs to the GP *k*.
 
         Args:
-            u_tracks (ndarray): the new forcing inputs
-            sim (simulation.Simulation): the experiment simulator
+            tracks (ndarray): output of the simulation
+            u_dim (int): the dimensions of the control input
+            X_span (ndarray): output of the simulation
+            Y_span (ndarray): output of the simulation
             k (gp_kernels.Kernel): represents the GP, if None newly created
             is_diff (bool): differences are modelled
 
@@ -96,8 +103,6 @@ class FixedGaussGP:
                 - **X_span** (*(t-1,d) np.array*): new GP inputs
                 - **Y_span** (*(t-1,m) np.array*): new GP output
         """
-        tracks, u_dim, X_span, Y_span = simulation.simulate(sim, u_tracks)
-
         # Calculate the output of the GP
         if is_diff:
             # The difference between consecutive time points
@@ -219,29 +224,32 @@ def search_u(target,
     k = None
 
     with tf.Session() as sess:
-        #
-        # Construct TF variables for the forcing inputs
-        u_col_tf = make_u_col_tf(u_col=u_col, trainable_inds=target.knots,
-                                 u_type=target.sim.u_type,
-                                 u_max_limit=u_max_limit)
-
-        #
-        # TODO: Not sure we need/should reinitialise every epoch. Is there a reason
-        # this is here?
-        #
-        # Looks like we should run this every time. See:
-        # https://stackoverflow.com/a/44434099/959926
-        sess.run(tf.global_variables_initializer())
-
         results = []
         for epoch in range(n_epochs):
-            #
-            # Run the simulation and update the GP with new data
-            k, X_span, Y_span = gp.kernel_for_u(u_tracks=u_col.T, sim=target.sim, k=k, is_diff=is_diff)
+
+            # Run the simulation
+            _ = target(u_col[target.knots].T)
+            tracks = target.recent_tracks
+
+            # Update the GP with new data
+            X_span, Y_span = gp_training_data_from_tracks(tracks, target.sim.input_dim)
+            k, X_span, Y_span = gp.update_kernel(tracks, target.sim.input_dim, X_span, Y_span, k=k, is_diff=is_diff)
 
             logger.info("Epoch {}: start with u_tracks {}".format(epoch, np.round(u_col.T[:, target.knots], 2)))
             logger.info("Epoch {}: current sim achieves {:.2f}".format(
                 epoch, Y_span[n_steps - 1, target.loss_fn.target_ind]))
+
+            #
+            # Construct TF variables for the forcing inputs
+            u_col_tf = make_u_col_tf(u_col=u_col,
+                                     trainable_inds=target.knots,
+                                     u_type=target.sim.u_type,
+                                     u_max_limit=u_max_limit)
+            # TODO: Not sure we need/should reinitialise every epoch. Is there a reason
+            # this is here?
+            # Looks like we should run this every time. See:
+            # https://stackoverflow.com/a/44434099/959926
+            sess.run(tf.global_variables_initializer())
 
             #
             # Construct a TensorFlow computation graph to
@@ -290,10 +298,17 @@ def search_u(target,
             logger.info("Epoch {}: sim achieves {:.2f}".format(epoch, Y_span[n_steps - 1, target.loss_fn.target_ind]))
 
             # Resample knot values randomly so as not to get stuck in local minima
-            # knot_values = np.random.uniform(low=0.0, high=u_max_limit, size=knot_values.shape)
-            # u_col = sim.u_tracks_from_knots(knots, knot_values).T
+            knot_values = np.random.uniform(low=0.0, high=u_max_limit, size=knot_values.shape)
+            u_col = target.sim.u_tracks_from_knots(target.knots, knot_values).T
 
         # end for loop
     # end with
 
     return results
+
+
+def gp_training_data_from_tracks(tracks, u_dim):
+    """Wrangle the simulation output into format suitable to add to GP."""
+    X_span = tracks[:, :-1].T  # (T-1) x input_dim input pts
+    Y_span = tracks[u_dim:, 1:].T  # (T-1) x output_dim multi output points
+    return X_span, Y_span

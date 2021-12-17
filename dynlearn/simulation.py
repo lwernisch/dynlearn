@@ -42,8 +42,12 @@ class Simulation(metaclass=ABCMeta):
         self.u_type = u_type
 
     @property
+    def input_dim(self):
+        return len(self.U)
+
+    @property
     def output_dim(self):
-        len(self.output_vars)
+        return len(self.output_vars)
 
     @property
     def tracks(self):
@@ -372,10 +376,8 @@ def simulate(sim, u_tracks):
     # Run the simulation
     sim.set_inputs(tracks=u_tracks, time_inds=np.arange(u_tracks.shape[1]))
     sim.dynamic_simulate()
-    #
-    # Wrangle the simulation output into format suitable to add to GP
-    tracks = sim.tracks
-    u_dim = sim.U.shape[0]
-    X_span = tracks[:, :-1].T  # (T-1) x input_dim input pts
-    Y_span = tracks[u_dim:, 1:].T  # (T-1) x output_dim multi output points
+
+    # TODO: replace wrangling here
+    1 / 0
+
     return tracks, u_dim, X_span, Y_span
