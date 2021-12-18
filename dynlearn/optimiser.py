@@ -75,19 +75,28 @@ class OptimisationTarget:
             return self.loss_fn.mean_loss(tracks.T[np.newaxis], tracks[:self.loss_fn.u_dim].T).eval()
 
 
+def array_as_series(a, *indexes, name='value'):
+    if a.ndim != len(indexes):
+        raise ValueError(f'Must have an index for each dimension: {a.ndim} != {len(indexes)}')
+    for d, (name, index) in enumerate(indexes):
+        if a.shape[d] != len(index):
+            raise ValueError(f'Index for dimension {d} is wrong length: {a.shape[d]} != {len(index)}')
+    index = pd.MultiIndex.from_product(list(map(op.itemgetter(1), indexes)), names=list(map(op.itemgetter(1), indexes)))
+    return pd.Series(index=index, data=a.flatten(), name=name)
+
+
 def chart_history(sim, history, max_epochs=12):
     """Create an altair chart of the history of the optimisation."""
     # This may be Nanog specific. TODO: check how to generalise to other demos
     control_vars = ['U (scaled)']
-    epochs = np.arange(history.shape[0])
-    species = list(itertools.chain(control_vars, sim.output_vars))
-    assert len(species) == history.shape[1], f'Wrong number of species: {len(species)} != {history.shape[1]}'
-    time_steps = np.arange(history.shape[2])
-    index = pd.MultiIndex.from_product([epochs, species, time_steps], names=['epoch', 'species', 'time_step'])
-    history_df = pd.Series(index=index, data=history.flatten(), name='value').reset_index()
+    n_epochs = history.shape[0]
+    history_series = array_as_series(history, (('epoch', np.arange(n_epochs)),
+                                               ('species', list(itertools.chain(control_vars, sim.output_vars))),
+                                               ('time_step', np.arange(history.shape[2]))))
+    history_df = history_series.reset_index()
     history_df['control'] = history_df['species'].isin(control_vars)
-    if len(epochs) > max_epochs:
-        epochs_to_show = np.linspace(0, len(epochs) - 1, num=max_epochs, dtype=int)
+    if n_epochs > max_epochs:
+        epochs_to_show = np.linspace(0, n_epochs - 1, num=max_epochs, dtype=int)
         history_df = history_df[history_df['epoch'].isin(epochs_to_show)]
     chart = (
         alt.Chart(history_df)
