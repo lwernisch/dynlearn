@@ -282,7 +282,7 @@ def search_u(sim, loss, gp, knots, knot_values, x0,
 
             #
             # Store epoch results
-            results.append(dict(k=k, X=X_span, y=Y_span, u=u_col, mean_loss=mean_loss_eval, actual_loss=actual_loss))
+            results.append(dict(k=k, sampled_tracks=rtracks, u=u_col, mean_loss=mean_loss_eval, actual_loss=actual_loss))
 
             logger.info("Epoch {}: end with u_col {}".format(epoch, np.round(u_col.T[:, knots], 2)))
             logger.info("Epoch {}: sim achieves {:.2f}".format(epoch, Y_span[n_steps - 1, loss.target_ind]))
