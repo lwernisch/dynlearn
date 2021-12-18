@@ -4,6 +4,7 @@
 
 from pathlib import Path
 import re
+import argparse
 import pickle
 import numpy as np
 import pandas as pd
@@ -12,15 +13,20 @@ from dynlearn import demo, optimiser as opt
 
 RESULTS_RE = re.compile('(.+)-results')
 
+import sys
+sys.argv = [
+    'analyse-results',
+    'results/nanog50-active-10-20-6-123456-1000-results.pkl',
+]
 
-results_dir = Path('results')
-result_paths = [results_dir / 'nanog50-random-10-20-40-123456-1000-results.pkl',
-                results_dir / 'nanog50-Powell-10-20-30-123456-1000-results.pkl',
-                results_dir / 'nanog50-Bayesian-10-20-20-123456-1000-results.pkl',
-                results_dir / 'nanog50-active-10-20-5-123456-1000-results.pkl', ]
+# Parse arguments
+parser = argparse.ArgumentParser()
+parser.add_argument('result_path', type=Path, action='append')
+args = parser.parse_args()
 
+# For each results file
 _losses = dict()
-for result_path in result_paths:
+for result_path in args.result_path:
     results = pickle.load(result_path.open('rb'))
     tag = RESULTS_RE.match(result_path.with_suffix('').name).group(1)
     args = demo.args_from_tag(tag)
