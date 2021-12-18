@@ -181,7 +181,7 @@ def search_u(target,
              u_max_limit=None,
              n_epochs=6,
              n_samples=10,
-             diag_epsilon=1e-3,
+             is_epsilon=True,
              is_nonnegative=True,
              predict_random=True,
              is_diff=True):
@@ -256,7 +256,7 @@ def search_u(target,
             for i in range(n_samples):
                 rtracks.append(k.tf_recursive(u_col_tf=u_col_tf,
                                               x0=x0,
-                                              diag_epsilon=diag_epsilon,
+                                              is_epsilon=is_epsilon,
                                               predict_random=predict_random,
                                               is_nonnegative=is_nonnegative,
                                               is_diff=is_diff))

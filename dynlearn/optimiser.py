@@ -187,7 +187,7 @@ def optimise_active(sim, loss_fn, gp, knots, knot_values, args):
                                 n_samples=args.num_samples,
                                 is_nonnegative=args.is_nonnegative,
                                 predict_random=args.predict_random,
-                                diag_epsilon=args.diag_epsilon,
+                                is_epsilon=args.is_epsilon,
                                 is_diff=args.gp_diff)
 
     # Wrangle results into same format as other optimisers and return
@@ -202,7 +202,8 @@ def optimise_active(sim, loss_fn, gp, knots, knot_values, args):
 def optimise(sim, loss_fn, gp, knots, knot_values, args):
     """Dispatch optimisation to an optimiser as configured in `args`."""
     # TODO: let each optimiser return best knot values
-    # TODO: check knot values are handled consistently across optimisers
+    # TODO: check knot values are handled consistently across optimisers,
+    # that is each optimiser uses the knot values to initialise with
     if 'random' == args.optimiser:
         return optimise_random(sim, loss_fn, knots, knot_values, args)
 

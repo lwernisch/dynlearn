@@ -60,7 +60,11 @@ def arg_parser():
     parser_active.add_argument('--predict-mean', dest='predict_random', action='store_false',
                                help='Simulate using GP posterior means')
     parser_active.set_defaults(predict_random=True)
-    parser_active.add_argument('--diag-epsilon', type=float, default=1e-3, help='Diagonal stabiliser for covariance')
+    parser_active.add_argument('--measurement-noise', dest='is_epsilon', action='store_true',
+                               help='Assume measurement noise')
+    parser_active.add_argument('--no-measurement-noise', dest='is_epsilon', action='store_false',
+                               help='Assume no measurement noise')
+    parser_active.set_defaults(is_epsilon=True)
 
     # Powell
     parser_powell = subparsers.add_parser('Powell', help='Use Powell optimisation')
