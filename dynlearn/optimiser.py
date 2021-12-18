@@ -75,14 +75,21 @@ class OptimisationTarget:
             return self.loss_fn.mean_loss(tracks.T[np.newaxis], tracks[:self.loss_fn.u_dim].T).eval()
 
 
-def array_as_series(a, *indexes, name='value'):
+def array_as_series(a, indexes, name='value'):
     if a.ndim != len(indexes):
         raise ValueError(f'Must have an index for each dimension: {a.ndim} != {len(indexes)}')
-    for d, (name, index) in enumerate(indexes):
+    indexes = [(index_name, np.arange(a.shape[d]) if index is None else index)
+               for d, (index_name, index)
+               in enumerate(indexes)]
+    for d, (_, index) in enumerate(indexes):
         if a.shape[d] != len(index):
             raise ValueError(f'Index for dimension {d} is wrong length: {a.shape[d]} != {len(index)}')
-    index = pd.MultiIndex.from_product(list(map(op.itemgetter(1), indexes)), names=list(map(op.itemgetter(1), indexes)))
+    index = pd.MultiIndex.from_product(list(map(op.itemgetter(1), indexes)), names=list(map(op.itemgetter(0), indexes)))
     return pd.Series(index=index, data=a.flatten(), name=name)
+
+
+def epochs_to_show(n_epochs, max_epochs):
+    return np.linspace(0, n_epochs - 1, num=max_epochs, dtype=int)
 
 
 def chart_history(sim, history, max_epochs=12):
@@ -95,9 +102,7 @@ def chart_history(sim, history, max_epochs=12):
                                                ('time_step', np.arange(history.shape[2]))))
     history_df = history_series.reset_index()
     history_df['control'] = history_df['species'].isin(control_vars)
-    if n_epochs > max_epochs:
-        epochs_to_show = np.linspace(0, n_epochs - 1, num=max_epochs, dtype=int)
-        history_df = history_df[history_df['epoch'].isin(epochs_to_show)]
+    history_df = history_df[history_df['epoch'].isin(epochs_to_show(n_epochs, max_epochs))]
     chart = (
         alt.Chart(history_df)
         .mark_line()
