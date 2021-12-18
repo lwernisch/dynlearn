@@ -21,10 +21,10 @@ Example:
         k.set_y(y)
 
         # set up latent test input for prediction:
-        z = tf.Variable([[0.5, 2.5], [3.5, 4.5]], dtype="float64")
+        z = tf.Variable([[0.5, 2.5], [3.5, 4.5]], dtype='float64')
         sess.run(tf.global_variables_initializer())
 
-        m_target = np.array([[1.1, 2.2], [3.3, 4.4]], dtype="float64")
+        m_target = np.array([[1.1, 2.2], [3.3, 4.4]], dtype='float64')
         m_tf, v_tf = k.tf_predict(z)
         sess.run(m_tf) # mean prediction over z far from m_target
 
@@ -153,7 +153,7 @@ class Kernel:
         Kvw = self.variance * tf.exp(-sq_sum)
         if is_epsilon:  # and tf.shape(Kvw)[0] == tf.shape(Kvw)[1]:
             Kvw = Kvw + self.likelihood_variance * tf.eye(tf.shape(Kvw)[0],
-                                                          dtype="float64")
+                                                          dtype='float64')
         return Kvw
 
     def tf_Kzx(self, z, is_epsilon=False):
@@ -162,7 +162,7 @@ class Kernel:
     def tf_Kzz(self, z, is_epsilon=False):
         return self.tf_Kvw(z, z, is_epsilon)
 
-    def tf_predict(self, z, diag_epsilon=False, is_cov=True):
+    def tf_predict(self, z, is_epsilon=False, is_cov=True):
         """Predict output for new inputs, TensorFlow version
 
         Args:
@@ -182,33 +182,39 @@ class Kernel:
         mean = tf.matmul(Kzx, self.Kinv_y)
         var = None
         if is_cov:
-            Kzz = self.tf_Kzz(z, diag_epsilon)
+            Kzz = self.tf_Kzz(z, is_epsilon)
             var = Kzz - tf.matmul(tf.matmul(Kzx, self.Kinv), tf.transpose(Kzx))
         # mean is n_sample(z) x n_tracks(y), var is n_sample(z) x n_sample(z)
         return (mean, var)
 
-    def tf_predict_random(self, z, diag_epsilon=1e-3, n_z=1):
+    def tf_predict_random(self, z, is_epsilon=False, cholesky_epsilon=1e-3, n_z=1):
         random_vecs = tf.constant(
             np.float64(np.random.normal(size=(n_z, self.output_dim))),
-            dtype="float64")
-        mean, var = self.tf_predict(z, diag_epsilon, is_cov=True)
-        if diag_epsilon is not None:
-            # stabilise for Cholesky with diag_epsilon*I
-            var = var + diag_epsilon * tf.eye(tf.shape(var)[0], dtype='float64')
+            dtype='float64')
+        mean, var = self.tf_predict(z, is_epsilon, is_cov=True)
+        if is_epsilon:
+            # stabilise for Cholesky with is_epsilon*I
+            var = var + cholesky_epsilon * tf.eye(tf.shape(var)[0], dtype='float64')
         return mean + tf.matmul(tf.linalg.cholesky(var), random_vecs)
 
-    def tf_predict_random_single(self, z, diag_epsilon=False):
+    def tf_predict_random_single(self, z, is_epsilon=False):
         random_vecs = tf.constant(np.float64(np.random.normal(size=(1, self.output_dim))), dtype='float64')
-        mean, var = self.tf_predict(z, diag_epsilon, is_cov=True)
+        mean, var = self.tf_predict(z, is_epsilon, is_cov=True)
         return mean + tf.sqrt(var) * random_vecs
 
-    def tf_predict_value(self, z, diag_epsilon=False, predict_random=False):
+    def tf_predict_value(self, z, is_epsilon=False, predict_random=False):
         if predict_random:
-            return self.tf_predict_random(z, diag_epsilon=diag_epsilon)
+            return self.tf_predict_random(z, is_epsilon=is_epsilon)
         else:
-            return self.tf_predict(z, diag_epsilon=diag_epsilon, is_cov=False)[0]
+            return self.tf_predict(z, is_epsilon=is_epsilon, is_cov=False)[0]
 
-    def tf_recursive(self, u_col_tf, x0, diag_epsilon=False, predict_random=False, is_nonnegative=False, is_diff=True):
+    def tf_recursive(self,
+                     u_col_tf,
+                     x0,
+                     is_epsilon=False,
+                     predict_random=False,
+                     is_nonnegative=False,
+                     is_diff=True):
         """Iteratively solve the dynamical system defined by the GP providing
         a (random) transition function as defined by the current GP inputs
         and outputs and ``u_col_tf`` as external forcing. Start with ``x0``
@@ -226,19 +232,18 @@ class Kernel:
         Args:
             u_col_tf ((t,d) tf.Tensor): *d*-dim external forcing for *t* steps
             x0 ((k,1) np.array): *k* initial values of species
-            diag_epsilon: assume measurement error
+            is_epsilon: assume measurement error
             predict_random: use GP covariance uncertainty
             is_nonnegative: impose nonnegativity constraint on species
             is_diff: assume the species difference is modeled by GP
 
         Returns:
-
             *(t,d+k) tf.Tensor* of forcing input and simulated species,
             first *d* columns return the *u* forcing input
         """
         x_dim = x0.shape[0]
         n_steps, u_dim = u_col_tf.shape
-        x_r0 = tf.constant(x0, shape=(1, x_dim), dtype="float64")  # as row vec
+        x_r0 = tf.constant(x0, shape=(1, x_dim), dtype='float64')  # as row vec
         # extend u at time_ind 0 to row vec by x0:
         rtracks = tf.concat([tf.reshape(u_col_tf[0, :], (1, -1)), x_r0], 1)
         #
@@ -249,7 +254,7 @@ class Kernel:
             #
             # Predict next x from previous
             # for prediction need z is (n = 1) x dim array
-            x_pred = self.tf_predict_value(rtracks_prev, diag_epsilon=diag_epsilon, predict_random=predict_random)
+            x_pred = self.tf_predict_value(rtracks_prev, is_epsilon=is_epsilon, predict_random=predict_random)
             #
             # Are we predicting the change in x or x itself?
             if is_diff:
@@ -277,7 +282,7 @@ def test_kernel():
                x=x)
     k.set_y(y)
 
-    z = np.array([1, 2, 3, 4, 5, 6], dtype="float64").reshape(-1, x.shape[1])
+    z = np.array([1, 2, 3, 4, 5, 6], dtype='float64').reshape(-1, x.shape[1])
 
     # 2D multi output prediction mean, only one covariance:
     m, v = k.np_predict(z)
@@ -302,7 +307,7 @@ def test_kernel_tf():
 
     # ---- set up test variable
 
-    z = tf.Variable([[1, 2], [3, 4]], dtype="float64")
+    z = tf.Variable([[1, 2], [3, 4]], dtype='float64')
     z
     sess.run(tf.global_variables_initializer())
 
@@ -313,10 +318,10 @@ def test_kernel_tf():
     # --- optimise latent test variable with Scipy to fit target distribution
     # ie GPLVM with fixed hyperparameters
 
-    z = tf.Variable([[0.5, 2.5], [3.5, 4.5]], dtype="float64")
+    z = tf.Variable([[0.5, 2.5], [3.5, 4.5]], dtype='float64')
     sess.run(tf.global_variables_initializer())
 
-    m_target = np.array([[1.1, 2.2], [3.3, 4.4]], dtype="float64")
+    m_target = np.array([[1.1, 2.2], [3.3, 4.4]], dtype='float64')
     m_tf, v_tf = k.tf_predict(z)
     sess.run(m_tf)  # mean prediction over z far from m_target
     mvn = tf.contrib.distributions.MultivariateNormalFullCovariance(m_tf, v_tf)
@@ -334,10 +339,10 @@ def test_kernel_tf():
 
     # ----  alternative TF optimizers
 
-    z = tf.Variable([[0.5, 2.5], [3.5, 4.5]], dtype="float64")
+    z = tf.Variable([[0.5, 2.5], [3.5, 4.5]], dtype='float64')
     # initialise variables AFTER TF optimizers are set up
 
-    m_target = np.array([[1.1, 2.2], [3.3, 4.4]], dtype="float64")
+    m_target = np.array([[1.1, 2.2], [3.3, 4.4]], dtype='float64')
     m_tf, v_tf = k.tf_predict(z)
     mvn = tf.contrib.distributions.MultivariateNormalFullCovariance(m_tf, v_tf)
     loss = -tf.reduce_sum(mvn.log_prob(m_target))
