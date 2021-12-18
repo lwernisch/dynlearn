@@ -100,8 +100,6 @@ class FixedGaussGP:
             forcing input, *m* is species dim only)
 
                 - **k** (*gp_kernels.Kernel*): the created or updated GP
-                - **X_span** (*(t-1,d) np.array*): new GP inputs
-                - **Y_span** (*(t-1,m) np.array*): new GP output
         """
         # Calculate the output of the GP
         if is_diff:
@@ -124,7 +122,7 @@ class FixedGaussGP:
             k.add_x(X_span)
             k.add_y(Y_gp)
 
-        return k, X_span, Y_span
+        return k
 
 
 # -------------  Core estimation functions
@@ -233,7 +231,7 @@ def search_u(target,
 
             # Update the GP with new data
             X_span, Y_span = gp_training_data_from_tracks(tracks, target.sim.input_dim)
-            k, X_span, Y_span = gp.update_kernel(tracks, target.sim.input_dim, X_span, Y_span, k=k, is_diff=is_diff)
+            k = gp.update_kernel(tracks, target.sim.input_dim, X_span, Y_span, k=k, is_diff=is_diff)
 
             logger.info("Epoch {}: start with u_tracks {}".format(epoch, np.round(u_col.T[:, target.knots], 2)))
             logger.info("Epoch {}: current sim achieves {:.2f}".format(
