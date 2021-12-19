@@ -5,6 +5,8 @@
 from pathlib import Path
 import re
 import argparse
+import itertools
+import operator as op
 import pickle
 import numpy as np
 import pandas as pd
@@ -13,11 +15,12 @@ from dynlearn import demo, optimiser as opt
 
 RESULTS_RE = re.compile('(.+)-results')
 
-import sys
-sys.argv = [
-    'analyse-results',
-    'results/nanog50-active-10-20-6-123456-1000-results.pkl',
-]
+# import sys
+# sys.argv = [
+#     'analyse-results',
+#     # 'results/nanog50-active-10-20-1-123456-1000-results.pkl',
+#     'results/nanog50-active-10-20-6-123456-1000-results.pkl',
+# ]
 
 # Parse arguments
 parser = argparse.ArgumentParser()
@@ -30,7 +33,6 @@ for result_path in args.result_path:
     results = pickle.load(result_path.open('rb'))
     tag = RESULTS_RE.match(result_path.with_suffix('').name).group(1)
     args = demo.args_from_tag(tag)
-    results.keys()
     sim, loss_fn, gp, knots, knot_values, plot_args = demo.setup(args)
     target = opt.OptimisationTarget(sim, loss_fn, knots)
     losses_raw = [target.loss_from_tracks(tracks) for tracks in results['history']]
@@ -41,8 +43,36 @@ for result_path in args.result_path:
 losses = pd.DataFrame(_losses)
 losses.index.name = 'experiments'
 losses = losses.reset_index()
-losses
-losses.columns
+
+if False:  # WIP
+    results.keys()
+    results['history'].shape
+    epoch_results = results['epoch_results']
+    len(epoch_results)
+    epoch_results[0].keys()
+    epoch_results[0]['sampled_tracks'].shape
+    sampled_tracks = np.asarray(list(map(op.itemgetter('sampled_tracks'), epoch_results)))
+    sampled_tracks.shape
+    sampled_tracks[:, :, :, 0] /= 10
+    control_vars = ['U (scaled)']
+
+    species = list(itertools.chain(control_vars, sim.output_vars))
+    sampled_tracks_df = opt.array_as_series(sampled_tracks, (('epoch', None),
+                                                             ('sample', None),
+                                                             ('time_step', None),
+                                                             ('species', species))).reset_index()
+    sampled_tracks_df
+
+    chart = (
+        alt.Chart(sampled_tracks_df)
+        .mark_line()
+        .encode(x='time_step:O',
+                y='value:Q',
+                color='species:N',
+                # strokeDash='control:N',
+                detail='sample',
+                facet=alt.Facet('epoch:O', columns=3)))
+    chart.save('plots/sampled.svg')
 
 # Melt losses to make chart
 losses_chart = (
