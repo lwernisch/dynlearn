@@ -75,27 +75,55 @@ class OptimisationTarget:
             return self.loss_fn.mean_loss(tracks.T[np.newaxis], tracks[:self.loss_fn.u_dim].T).eval()
 
 
-def chart_history(sim, history, max_epochs=12):
+def array_as_series(a, indexes, name='value'):
+    if a.ndim != len(indexes):
+        raise ValueError(f'Must have an index for each dimension: {a.ndim} != {len(indexes)}')
+    indexes = [(index_name, np.arange(a.shape[d]) if index is None else index)
+               for d, (index_name, index)
+               in enumerate(indexes)]
+    for d, (_, index) in enumerate(indexes):
+        if a.shape[d] != len(index):
+            raise ValueError(f'Index for dimension {d} is wrong length: {a.shape[d]} != {len(index)}')
+    index = pd.MultiIndex.from_product(list(map(op.itemgetter(1), indexes)), names=list(map(op.itemgetter(0), indexes)))
+    return pd.Series(index=index, data=a.flatten(), name=name)
+
+
+def epochs_to_show(n_epochs, max_epochs):
+    return np.linspace(0, n_epochs - 1, num=max_epochs, dtype=int)
+
+
+def chart_history(sim, history, max_epochs=12, samples=None):
     """Create an altair chart of the history of the optimisation."""
     # This may be Nanog specific. TODO: check how to generalise to other demos
     control_vars = ['U (scaled)']
-    epochs = np.arange(history.shape[0])
+    n_epochs = history.shape[0]
     species = list(itertools.chain(control_vars, sim.output_vars))
-    assert len(species) == history.shape[1], f'Wrong number of species: {len(species)} != {history.shape[1]}'
-    time_steps = np.arange(history.shape[2])
-    index = pd.MultiIndex.from_product([epochs, species, time_steps], names=['epoch', 'species', 'time_step'])
-    history_df = pd.Series(index=index, data=history.flatten(), name='value').reset_index()
-    history_df['control'] = history_df['species'].isin(control_vars)
-    if len(epochs) > max_epochs:
-        epochs_to_show = np.linspace(0, len(epochs) - 1, num=max_epochs, dtype=int)
-        history_df = history_df[history_df['epoch'].isin(epochs_to_show)]
+    tracks_df = array_as_series(history, (('epoch', None),
+                                          ('species', species),
+                                          ('time_step', None))).reset_index()
+    tracks_df['is_sample'] = False
+    tracks_df['sample'] = -1
+    #
+    # Combine with samples if we have been given them
+    if samples is not None:
+        samples_df = array_as_series(samples, (('epoch', None),
+                                               ('sample', None),
+                                               ('time_step', None),
+                                               ('species', species))).reset_index()
+        samples_df['is_sample'] = True
+        tracks_df = pd.concat([tracks_df, samples_df], ignore_index=True)
+    tracks_df['control'] = tracks_df['species'].isin(control_vars)
+    tracks_df = tracks_df[tracks_df['epoch'].isin(epochs_to_show(n_epochs, max_epochs))]
+    opacity = alt.condition(alt.datum.is_sample, alt.value(.3), alt.value(1.))
     chart = (
-        alt.Chart(history_df)
+        alt.Chart(tracks_df)
         .mark_line()
         .encode(x='time_step:O',
                 y='value:Q',
                 color='species:N',
                 strokeDash='control:N',
+                detail='sample',
+                opacity=opacity,
                 facet=alt.Facet('epoch:O', columns=3)))
     return chart
 
