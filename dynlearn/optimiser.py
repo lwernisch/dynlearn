@@ -92,24 +92,38 @@ def epochs_to_show(n_epochs, max_epochs):
     return np.linspace(0, n_epochs - 1, num=max_epochs, dtype=int)
 
 
-def chart_history(sim, history, max_epochs=12):
+def chart_history(sim, history, max_epochs=12, samples=None):
     """Create an altair chart of the history of the optimisation."""
     # This may be Nanog specific. TODO: check how to generalise to other demos
     control_vars = ['U (scaled)']
     n_epochs = history.shape[0]
-    history_series = array_as_series(history, (('epoch', np.arange(n_epochs)),
-                                               ('species', list(itertools.chain(control_vars, sim.output_vars))),
-                                               ('time_step', np.arange(history.shape[2]))))
-    history_df = history_series.reset_index()
-    history_df['control'] = history_df['species'].isin(control_vars)
-    history_df = history_df[history_df['epoch'].isin(epochs_to_show(n_epochs, max_epochs))]
+    species = list(itertools.chain(control_vars, sim.output_vars))
+    tracks_df = array_as_series(history, (('epoch', None),
+                                          ('species', species),
+                                          ('time_step', None))).reset_index()
+    tracks_df['is_sample'] = False
+    tracks_df['sample'] = -1
+    #
+    # Combine with samples if we have been given them
+    if samples is not None:
+        samples_df = array_as_series(samples, (('epoch', None),
+                                               ('sample', None),
+                                               ('time_step', None),
+                                               ('species', species))).reset_index()
+        samples_df['is_sample'] = True
+        tracks_df = pd.concat([tracks_df, samples_df], ignore_index=True)
+    tracks_df['control'] = tracks_df['species'].isin(control_vars)
+    tracks_df = tracks_df[tracks_df['epoch'].isin(epochs_to_show(n_epochs, max_epochs))]
+    opacity = alt.condition(alt.datum.is_sample, alt.value(.3), alt.value(1.))
     chart = (
-        alt.Chart(history_df)
+        alt.Chart(tracks_df)
         .mark_line()
         .encode(x='time_step:O',
                 y='value:Q',
                 color='species:N',
                 strokeDash='control:N',
+                detail='sample',
+                opacity=opacity,
                 facet=alt.Facet('epoch:O', columns=3)))
     return chart
 
