@@ -171,7 +171,12 @@ def make_u_col_tf(u_col, trainable_inds, u_type, u_max_limit=None,
     return tf.stack(u_lst, 0)
 
 
-def search_u(sim, loss, gp, knots, knot_values, x0,
+def search_u(sim,
+             loss,
+             gp,
+             knots,
+             knot_values,
+             x0,
              u_max_limit=None,
              n_epochs=6,
              n_samples=10,
